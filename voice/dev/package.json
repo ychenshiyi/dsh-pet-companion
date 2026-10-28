@@ -1,0 +1,17 @@
+{
+  "name": "dsh-livekit-dev",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "本机 LiveKit 联调页与令牌服务（仅 127.0.0.1）",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node test/webrtc-check.mjs"
+  },
+  "dependencies": {
+    "livekit-client": "^2.23.0"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.64.1"
+  }
+}

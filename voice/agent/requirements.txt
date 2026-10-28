@@ -1,0 +1,10 @@
+# Agent 运行依赖（已安装在本目录 ../.venv 中；需要重建时用）
+# 注意：venv 必须基于独立 Python 3.12（DSH 自带那个）；Anaconda 3.11 下
+#       livekit-local-inference 的原生扩展会崩溃（0xC0000005）。
+livekit-agents==1.8.9
+livekit-plugins-silero==1.8.9
+livekit-plugins-openai==1.8.9
+onnxruntime==1.20.1
+sherpa-onnx==2.0.1
+edge-tts==7.3.1
+numpy

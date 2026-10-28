@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LiveKit 本机联调</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0d1117;
+        --panel: #161b22;
+        --line: #30363d;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --accent: #2f81f7;
+        --ok: #3fb950;
+        --warn: #d29922;
+        --err: #f85149;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(1200px 600px at 20% -10%, #1b2a4a 0%, var(--bg) 55%);
+        color: var(--text);
+        font: 14px/1.6 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
+      }
+      main { max-width: 1080px; margin: 0 auto; padding: 28px 20px 48px; }
+      h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: 0.5px; }
+      .sub { color: var(--muted); margin: 0 0 20px; }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px 18px;
+        margin-bottom: 16px;
+      }
+      .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+      label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+      input[type='text'] {
+        width: 180px;
+        background: #0b0f14;
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font: inherit;
+      }
+      input[type='text']:focus { outline: 2px solid rgba(47, 129, 247, 0.45); border-color: var(--accent); }
+      .check { flex-direction: row; align-items: center; gap: 6px; color: var(--text); font-size: 13px; padding-bottom: 9px; }
+      button {
+        border: 1px solid var(--line);
+        background: #21262d;
+        color: var(--text);
+        border-radius: 8px;
+        padding: 9px 16px;
+        font: inherit;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+      }
+      button:hover:not(:disabled) { background: #30363d; border-color: #484f58; }
+      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      button.primary:hover:not(:disabled) { background: #1f6feb; }
+      button.danger { color: var(--err); border-color: rgba(248, 81, 73, 0.45); }
+      button:disabled { opacity: 0.45; cursor: not-allowed; }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 4px 12px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+      .dot.ok { background: var(--ok); box-shadow: 0 0 10px rgba(63, 185, 80, 0.7); }
+      .dot.err { background: var(--err); }
+      .dot.warn { background: var(--warn); }
+      .grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }
+      @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+      h2 { font-size: 14px; margin: 0 0 10px; color: var(--muted); font-weight: 600; letter-spacing: 0.4px; }
+      .people { display: flex; flex-direction: column; gap: 8px; }
+      .person {
+        display: grid;
+        grid-template-columns: 1fr 84px;
+        gap: 10px;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 9px 12px;
+        background: #0f141a;
+      }
+      .person.speaking { border-color: rgba(63, 185, 80, 0.6); box-shadow: inset 0 0 0 1px rgba(63, 185, 80, 0.2); }
+      .person .who { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+      .person .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .person .tag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; }
+      .meter { height: 8px; border-radius: 999px; background: #0b0f14; overflow: hidden; border: 1px solid var(--line); }
+      .meter > i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, #238636, #3fb950); transition: width 80ms linear; }
+      .mic-off { color: var(--err); font-size: 11px; }
+      #log {
+        height: 260px;
+        overflow: auto;
+        margin: 0;
+        padding: 10px 12px;
+        background: #0b0f14;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        font: 12px/1.55 'Cascadia Mono', Consolas, monospace;
+        color: #c9d1d9;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      #log .err { color: var(--err); }
+      #log .ok { color: var(--ok); }
+      .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+      #audio-sink { display: none; }
+      .statusline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>LiveKit 本机联调</h1>
+      <p class="sub">
+        信令 <code>ws://127.0.0.1:7880</code> · 令牌由本机 <code>127.0.0.1:7890</code> 签发（secret 不进浏览器）
+      </p>
+
+      <section class="card">
+        <div class="row">
+          <label>房间 <input id="room" type="text" value="pet-room" autocomplete="off" /></label>
+          <label>身份 <input id="identity" type="text" placeholder="留空自动生成" autocomplete="off" /></label>
+          <label class="check"><input id="publish" type="checkbox" checked /> 发布麦克风</label>
+          <button id="join" class="primary">加入房间</button>
+          <button id="mute" disabled>静音</button>
+          <button id="micTest">测试麦克风</button>
+          <button id="leave" class="danger" disabled>离开</button>
+        </div>
+        <div class="statusline" style="margin-top: 14px">
+          <span class="pill"><span id="dot" class="dot"></span><span id="status">未连接</span></span>
+          <span class="pill">参与者 <b id="count">0</b></span>
+          <span class="pill">麦克风 <b id="micState">检测中…</b></span>
+          <span class="hint">加入 <code>pet-room*</code> 后语音 Agent 会自动进来打招呼；允许麦克风后直接说话即可对话。</span>
+        </div>
+        <p class="hint" id="micHelp" style="display: none; color: var(--warn)"></p>
+      </section>
+
+      <div class="grid">
+        <section class="card">
+          <h2>参与者与音量</h2>
+          <div id="people" class="people">
+            <p class="hint">加入后显示。</p>
+          </div>
+        </section>
+        <section class="card">
+          <h2>事件日志</h2>
+          <pre id="log"></pre>
+          <p class="hint" id="health">检查本机服务…</p>
+        </section>
+      </div>
+      <div id="audio-sink"></div>
+    </main>
+    <script src="./vendor/livekit-client.umd.js"></script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

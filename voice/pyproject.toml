@@ -1,0 +1,44 @@
+[project]
+name = "dsh-pet-voice-agent"
+version = "0.1.0"
+description = "dsh-pet 的 LiveKit 语音 Agent：SenseVoice STT + Edge/MeloTTS + 唤醒门 + 情感状态"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "PC2005-cloud" }]
+
+# 运行时依赖以 agent/requirements.txt 为准（已锁版本、由 bootstrap.ps1 安装）；
+# 这里只声明开发期需要的工具，避免两处版本漂移。
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "pytest-cov>=5.0",
+  "ruff>=0.9",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q --strict-markers"
+filterwarnings = ["error::DeprecationWarning:agent.*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["agent", "tests"]
+extend-exclude = ["models", ".venv", ".venv-anaconda-broken", "livekit_*_windows_amd64"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = [
+  "E501",   # 行长由 ruff format 保证，中文注释偶尔超一点不必报错
+  "SIM108", # 三元表达式不一定更好读
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agent"]
+
+[tool.ruff.format]
+quote-style = "double"
