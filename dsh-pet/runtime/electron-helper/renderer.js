@@ -17,7 +17,8 @@ if (window.petBridge) {
     });
   }
   if (typeof window.petBridge.getVoiceStatus === 'function') {
-    window.petBridge.getVoiceStatus()
+    window.petBridge
+      .getVoiceStatus()
       .then((state) => {
         window.__voiceOn = !!(state && state.on);
       })

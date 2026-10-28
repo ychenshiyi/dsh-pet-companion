@@ -88,7 +88,9 @@ export async function handleChatRoutes(deps: PetRouteDeps, input: RouteInput): P
       if (!who.ok) return who.res;
       if (isReset) {
         const result = await resetEmotion(who.petId);
-        return result.ok ? okResult({ ok: true, state: result.state, enabled: true }) : failResult(result.reason, result.message);
+        return result.ok
+          ? okResult({ ok: true, state: result.state, enabled: true })
+          : failResult(result.reason, result.message);
       }
       const result = await getEmotion(who.petId);
       return result.ok
@@ -127,7 +129,8 @@ export async function handleChatRoutes(deps: PetRouteDeps, input: RouteInput): P
     const who = requirePet(url.searchParams, () => cfg, { surface: false });
     if (!who.ok) return who.res;
     if (!text || text.length > 200) return failResult('bad-request', '提醒文本需为 1–200 字');
-    if (!Number.isFinite(dueAt) || dueAt < Date.now() - 60_000) return failResult('bad-request', 'dueAt 必须是未来时间戳');
+    if (!Number.isFinite(dueAt) || dueAt < Date.now() - 60_000)
+      return failResult('bad-request', 'dueAt 必须是未来时间戳');
     return okResult({ ok: true, item: await reminders.add(text, dueAt, who.petId) });
   }
 
@@ -138,9 +141,7 @@ export async function handleChatRoutes(deps: PetRouteDeps, input: RouteInput): P
     const who = requirePet(url.searchParams, () => cfg, { surface: false });
     if (!who.ok) return who.res;
     const mem = await readMemory();
-    const messages = Array.isArray(mem[who.entry]?.[who.petId]?.messages)
-      ? mem[who.entry][who.petId].messages
-      : [];
+    const messages = Array.isArray(mem[who.entry]?.[who.petId]?.messages) ? mem[who.entry][who.petId].messages : [];
     const emotion = await getEmotion(who.petId);
     const lines: string[] = [`# ${who.petId} 的回忆录`, ''];
     lines.push('## 对话');
@@ -150,7 +151,11 @@ export async function handleChatRoutes(deps: PetRouteDeps, input: RouteInput): P
     }
     if (emotion.ok) {
       const state = emotion.state;
-      lines.push('', '## 关系状态', `好感 ${state.affection} / 信任 ${state.trust} / 熟悉 ${state.familiarity} / 精力 ${state.energy}，心情 ${state.mood}`);
+      lines.push(
+        '',
+        '## 关系状态',
+        `好感 ${state.affection} / 信任 ${state.trust} / 熟悉 ${state.familiarity} / 精力 ${state.energy}，心情 ${state.mood}`,
+      );
       if (state.facts.length > 0) {
         lines.push('', '## 记得的事');
         for (const fact of state.facts) lines.push(`- ${fact.text}`);

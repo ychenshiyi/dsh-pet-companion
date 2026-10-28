@@ -94,8 +94,16 @@ const usageSchema = z.object({
 
 const proactiveSchema = z.object({
   enabled: z.boolean().optional().default(false),
-  quietStart: z.string().regex(/^\d{2}:\d{2}$/).optional().default('23:00'),
-  quietEnd: z.string().regex(/^\d{2}:\d{2}$/).optional().default('08:00'),
+  quietStart: z
+    .string()
+    .regex(/^\d{2}:\d{2}$/)
+    .optional()
+    .default('23:00'),
+  quietEnd: z
+    .string()
+    .regex(/^\d{2}:\d{2}$/)
+    .optional()
+    .default('08:00'),
   dailyLimit: z.number().int().min(0).max(100).optional().default(2),
   minIntervalMinutes: z.number().int().min(5).max(1440).optional().default(120),
 });

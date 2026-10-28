@@ -854,4 +854,3 @@ export const companionScript = `
   load().catch((error) => { setStatus('读取失败：' + error.message, 'error'); });
 })();
 `;
-

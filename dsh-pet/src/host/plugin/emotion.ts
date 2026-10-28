@@ -129,7 +129,8 @@ export function applyEmotionTurn(state: EmotionState, userText: string, replyTex
   if (angry) next.mood = 'angry';
   next.userMood = angry ? 'angry' : negative > 0 ? 'sad' : positive > 0 ? 'happy' : 'calm';
 
-  const important = text.length >= 20 || positive > 0 || negative > 0 || /生日|名字|喜欢|讨厌|分手|工作|学校/.test(text);
+  const important =
+    text.length >= 20 || positive > 0 || negative > 0 || /生日|名字|喜欢|讨厌|分手|工作|学校/.test(text);
   if (important && text) {
     next.episodes.push({
       ts: Date.now(),

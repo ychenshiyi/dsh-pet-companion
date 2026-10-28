@@ -295,9 +295,13 @@ async function boot(): Promise<void> {
       const win = voiceWindow;
       if (!win || win.isDestroyed()) return;
       void win.webContents
-        .executeJavaScript('({ state: window.__voiceState ? window.__voiceState() : null, hashLength: location.hash.length })')
+        .executeJavaScript(
+          '({ state: window.__voiceState ? window.__voiceState() : null, hashLength: location.hash.length })',
+        )
         .then((state) => log('语音窗状态 ' + JSON.stringify(state)))
-        .catch((error: unknown) => log('语音窗状态读取失败 ' + (error instanceof Error ? error.message : String(error))));
+        .catch((error: unknown) =>
+          log('语音窗状态读取失败 ' + (error instanceof Error ? error.message : String(error))),
+        );
     }, 8000);
   };
   const closeVoice = async (): Promise<void> => {
@@ -322,14 +326,11 @@ async function boot(): Promise<void> {
     const text = String(data.text ?? '').trim();
     if (!petId || !text) return { ok: false, error: '缺少宠物或文本' };
     try {
-      const res = await fetch(
-        `${origin}${ROUTE_PATH}/chat?pet=${encodeURIComponent(petId)}&surface=desktop`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-DSH-Pet-Token': security.token },
-          body: JSON.stringify({ text }),
-        },
-      );
+      const res = await fetch(`${origin}${ROUTE_PATH}/chat?pet=${encodeURIComponent(petId)}&surface=desktop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-DSH-Pet-Token': security.token },
+        body: JSON.stringify({ text }),
+      });
       return await res.json();
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };

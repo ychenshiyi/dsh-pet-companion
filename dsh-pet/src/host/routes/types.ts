@@ -135,7 +135,9 @@ export interface PetRouteDeps {
   /** 情感状态（关系/情节/事实）；找不到宠物明确失败。 */
   readonly getEmotion: (
     petId: string,
-  ) => Promise<{ ok: true; state: EmotionState; enabled: boolean } | { ok: false; reason: 'unknown-pet'; message: string }>;
+  ) => Promise<
+    { ok: true; state: EmotionState; enabled: boolean } | { ok: false; reason: 'unknown-pet'; message: string }
+  >;
   /** 重置该宠物的情感成长。 */
   readonly resetEmotion: (
     petId: string,

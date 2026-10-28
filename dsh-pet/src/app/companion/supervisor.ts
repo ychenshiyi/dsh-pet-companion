@@ -288,7 +288,13 @@ export class VoiceSupervisor {
             ? 'error'
             : 'stopped';
     const agent: SupervisorStatus['agent'] =
-      this.phase === 'running' ? 'running' : this.phase === 'agent-starting' ? 'starting' : this.phase === 'error' ? 'error' : 'stopped';
+      this.phase === 'running'
+        ? 'running'
+        : this.phase === 'agent-starting'
+          ? 'starting'
+          : this.phase === 'error'
+            ? 'error'
+            : 'stopped';
     return {
       running: this.phase === 'running',
       livekit,

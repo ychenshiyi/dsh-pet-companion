@@ -7,12 +7,7 @@
 import { CHAT_HOTKEY_HINT, mountChatDialog } from '../../../shared/chat/index.ts';
 import { captureDisplayFrame } from '../../../shared/chat/capture.ts';
 import { bindOpenChat } from './open-chat.ts';
-import {
-  buildMenuTree,
-  buildMoreBranch,
-  mountContextMenu,
-  type MenuNode,
-} from '../../../shared/menu.ts';
+import { buildMenuTree, buildMoreBranch, mountContextMenu, type MenuNode } from '../../../shared/menu.ts';
 import { ROUTE_PATH } from '../../../shared/constants.ts';
 import { TOOLTIP_GAP_RATIO, tooltipPlacement } from '../../../shared/tooltip.ts';
 import type { MenuMoreItem } from '../../../shared/menu.ts';

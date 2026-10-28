@@ -92,14 +92,16 @@ export function createCompanionHandlers(deps: {
 }): CompanionHandlers {
   const { store, ai, supervisor, voiceDir, openVoice, closeVoice, stopVoice, runtime, info } = deps;
 
-  const voiceAsset = (name: string, type: string) => (_req: IncomingMessage, res: ServerResponse): void => {
-    const file = join(voiceDir, name);
-    if (!existsSync(file)) {
-      sendJson(res, 404, { error: '语音资源缺失' });
-      return;
-    }
-    sendAsset(res, type, readFileSync(file, 'utf8'));
-  };
+  const voiceAsset =
+    (name: string, type: string) =>
+    (_req: IncomingMessage, res: ServerResponse): void => {
+      const file = join(voiceDir, name);
+      if (!existsSync(file)) {
+        sendJson(res, 404, { error: '语音资源缺失' });
+        return;
+      }
+      sendAsset(res, type, readFileSync(file, 'utf8'));
+    };
 
   async function syncLegacyAi(): Promise<void> {
     const provider = store.activeProvider();
@@ -184,8 +186,7 @@ export function createCompanionHandlers(deps: {
         sendJson(res, 400, { error: '请求体不是合法 JSON' });
         return;
       }
-      const provider =
-        store.current().providers.find((p) => p.id === body.providerId) ?? store.activeProvider();
+      const provider = store.current().providers.find((p) => p.id === body.providerId) ?? store.activeProvider();
       if (!provider) {
         sendJson(res, 400, { error: '找不到该服务商' });
         return;
@@ -334,7 +335,11 @@ export function createCompanionHandlers(deps: {
         await openVoice();
         sendJson(res, 200, { ok: true, ...supervisor.status() });
       } catch (error) {
-        sendJson(res, 200, { ok: false, error: error instanceof Error ? error.message : String(error), ...supervisor.status() });
+        sendJson(res, 200, {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+          ...supervisor.status(),
+        });
       }
     },
     async voiceClose(req, res) {

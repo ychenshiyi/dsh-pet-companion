@@ -15,7 +15,9 @@
   const state = { status: 'starting', error: '', identity, room: roomName, mic: false };
   let room = null;
   const el = document.getElementById('s');
-  const render = () => { if (el) el.textContent = state.status + (state.error ? '\n' + state.error : ''); };
+  const render = () => {
+    if (el) el.textContent = state.status + (state.error ? '\n' + state.error : '');
+  };
   window.__voiceState = () => ({ ...state });
 
   async function connect() {
@@ -27,7 +29,7 @@
       body: JSON.stringify({ identity, room: roomName }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
 
     room = new LK.Room({ adaptiveStream: false, dynacast: false, disconnectOnPageLeave: true });
     room.on(LK.RoomEvent.TrackSubscribed, (track) => {
@@ -41,10 +43,18 @@
       state.status = 'disconnected';
       state.mic = false;
       render();
-      setTimeout(() => { if (state.status === 'disconnected') void connect().catch(fail); }, 2000);
+      setTimeout(() => {
+        if (state.status === 'disconnected') void connect().catch(fail);
+      }, 2000);
     });
-    room.on(LK.RoomEvent.Reconnecting, () => { state.status = 'reconnecting'; render(); });
-    room.on(LK.RoomEvent.Reconnected, () => { state.status = 'connected'; render(); });
+    room.on(LK.RoomEvent.Reconnecting, () => {
+      state.status = 'reconnecting';
+      render();
+    });
+    room.on(LK.RoomEvent.Reconnected, () => {
+      state.status = 'connected';
+      render();
+    });
 
     // 听/想/说：用宿主气泡做可见状态（隐藏语音窗本身不可见）。
     let indicator = '';
@@ -58,13 +68,14 @@
       }).catch(() => {});
     }
     const speakersEvent = LK.RoomEvent.ActiveSpeakersChanged;
-    if (speakersEvent) room.on(speakersEvent, (speakers) => {
-      const local = (speakers || []).some((participant) => participant && participant.isLocal);
-      if (local) {
-        armWakeHint();
-        showBubble('🎤 在听你说…', 60000);
-      } else if (indicator.indexOf('🎤') === 0) showBubble('🤔 我在想…', 60000);
-    });
+    if (speakersEvent)
+      room.on(speakersEvent, (speakers) => {
+        const local = (speakers || []).some((participant) => participant && participant.isLocal);
+        if (local) {
+          armWakeHint();
+          showBubble('🎤 在听你说…', 60000);
+        } else if (indicator.indexOf('🎤') === 0) showBubble('🤔 我在想…', 60000);
+      });
     let wakeTimer = null;
     function armWakeHint() {
       if (wakeTimer) clearTimeout(wakeTimer);
@@ -74,26 +85,27 @@
     // 字幕：Agent 的最终转写通过宿主气泡显示（隐藏语音窗本身不可见）。
     // anim=false 只弹文字，不抢当前动画；duration 8s 由宿主消费。
     const transcriptionEvent = LK.RoomEvent.TranscriptionReceived;
-    if (transcriptionEvent) room.on(transcriptionEvent, (segments, participant) => {
-      if (!participant || participant.isLocal) return;
-      const text = (segments || [])
-        .filter((segment) => segment && segment.final && segment.text)
-        .map((segment) => segment.text.trim())
-        .join(' ')
-        .trim();
-      if (!text) return;
-      indicator = text;
-      armWakeHint();
-      void fetch('/dsh-pet-7340/broadcast?pet=main&surface=any', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-DSH-Pet-Token': appToken },
-        body: JSON.stringify({ text, duration: 8000, anim: false }),
-      })
-        .then((response) => {
-          if (!response.ok) console.log('voice subtitle rejected', response.status);
+    if (transcriptionEvent)
+      room.on(transcriptionEvent, (segments, participant) => {
+        if (!participant || participant.isLocal) return;
+        const text = (segments || [])
+          .filter((segment) => segment && segment.final && segment.text)
+          .map((segment) => segment.text.trim())
+          .join(' ')
+          .trim();
+        if (!text) return;
+        indicator = text;
+        armWakeHint();
+        void fetch('/dsh-pet-7340/broadcast?pet=main&surface=any', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-DSH-Pet-Token': appToken },
+          body: JSON.stringify({ text, duration: 8000, anim: false }),
         })
-        .catch((error) => console.log('voice subtitle failed', error && error.message));
-    });
+          .then((response) => {
+            if (!response.ok) console.log('voice subtitle rejected', response.status);
+          })
+          .catch((error) => console.log('voice subtitle failed', error && error.message));
+      });
 
     await room.connect(data.url, data.token, { autoSubscribe: true });
     await room.localParticipant.setMicrophoneEnabled(true);
@@ -115,5 +127,3 @@
 
   connect().catch(fail);
 })();
-
-

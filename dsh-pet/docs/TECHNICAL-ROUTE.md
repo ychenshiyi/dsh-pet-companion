@@ -28,22 +28,22 @@
 
 ## 2. 技术栈与版本（实测）
 
-| 层 | 选型 | 版本/说明 |
-| --- | --- | --- |
-| 桌面壳 | Electron | 由 `~/.dsh/electron/electron.exe` 启动 |
-| 主语言 | TypeScript | Node 24.12（当前开发机） |
-| 构建 | tsdown | `pnpm run bundle` 产出 `lib/*.js` |
-| 桌宠原体 | dsh-pet 0.3.8 | 透明窗 + 106 个 webm 动画 + 物理/拖拽 |
-| 本地 HTTP | Node `http` | 随机端口 + `X-DSH-Pet-Token` |
-| 语音服务 | LiveKit Server | 1.13.11（Windows amd64） |
-| 语音框架 | LiveKit Agents | Python 1.8.9 |
-| Python | 3.12.14 | `.venv`（DSH standalone Python） |
-| STT | SenseVoice int8 | sherpa-onnx 2.0.1，模型约 239MB |
-| 离线 TTS | MeloTTS zh_en | sherpa-onnx VITS，模型约 170MB |
-| 在线 TTS | Edge TTS | `zh-CN-XiaoxiaoNeural`，失败回退 Melo |
-| LLM | DeepSeek / OpenAI 兼容 / Anthropic | `ctx.llm` 统一抽象；默认 `deepseek-flash` |
-| 记忆/情感 | JSON 文件 | 无数据库，原子替换、单写者 |
-| 测试 | Node test + Playwright（人工/脚本） | `pnpm test` 1519 passed |
+| 层        | 选型                                | 版本/说明                                 |
+| --------- | ----------------------------------- | ----------------------------------------- |
+| 桌面壳    | Electron                            | 由 `~/.dsh/electron/electron.exe` 启动    |
+| 主语言    | TypeScript                          | Node 24.12（当前开发机）                  |
+| 构建      | tsdown                              | `pnpm run bundle` 产出 `lib/*.js`         |
+| 桌宠原体  | dsh-pet 0.3.8                       | 透明窗 + 106 个 webm 动画 + 物理/拖拽     |
+| 本地 HTTP | Node `http`                         | 随机端口 + `X-DSH-Pet-Token`              |
+| 语音服务  | LiveKit Server                      | 1.13.11（Windows amd64）                  |
+| 语音框架  | LiveKit Agents                      | Python 1.8.9                              |
+| Python    | 3.12.14                             | `.venv`（DSH standalone Python）          |
+| STT       | SenseVoice int8                     | sherpa-onnx 2.0.1，模型约 239MB           |
+| 离线 TTS  | MeloTTS zh_en                       | sherpa-onnx VITS，模型约 170MB            |
+| 在线 TTS  | Edge TTS                            | `zh-CN-XiaoxiaoNeural`，失败回退 Melo     |
+| LLM       | DeepSeek / OpenAI 兼容 / Anthropic  | `ctx.llm` 统一抽象；默认 `deepseek-flash` |
+| 记忆/情感 | JSON 文件                           | 无数据库，原子替换、单写者                |
+| 测试      | Node test + Playwright（人工/脚本） | `pnpm test` 1519 passed                   |
 
 ---
 
@@ -71,14 +71,14 @@
 
 ### 进程/职责
 
-| 进程 | 职责 | 生命周期 |
-| --- | --- | --- |
-| Electron 主进程 | 本机 HTTP、设置窗、语音窗、插件宿主、supervisor | 应用运行期 |
-| 桌面 Helper（Electron 子进程） | 透明桌宠窗、动画、拖拽、右键菜单 | 随主进程；可重载 |
-| livekit-server | WebRTC 房间/音频转发 | 语音开启时；空闲 5 分钟回收 |
-| Python Agent | STT/LLM/TTS/唤醒/情感 | 语音开启时；语音关闭立即杀 |
-| 设置窗口 | 统一设置 UI | 用户打开时；独立窗口 |
-| QQ 桥接（规划） | OneBot WS ↔ 本机 HTTP | 设置开启时；独立进程 |
+| 进程                           | 职责                                            | 生命周期                    |
+| ------------------------------ | ----------------------------------------------- | --------------------------- |
+| Electron 主进程                | 本机 HTTP、设置窗、语音窗、插件宿主、supervisor | 应用运行期                  |
+| 桌面 Helper（Electron 子进程） | 透明桌宠窗、动画、拖拽、右键菜单                | 随主进程；可重载            |
+| livekit-server                 | WebRTC 房间/音频转发                            | 语音开启时；空闲 5 分钟回收 |
+| Python Agent                   | STT/LLM/TTS/唤醒/情感                           | 语音开启时；语音关闭立即杀  |
+| 设置窗口                       | 统一设置 UI                                     | 用户打开时；独立窗口        |
+| QQ 桥接（规划）                | OneBot WS ↔ 本机 HTTP                           | 设置开启时；独立进程        |
 
 ### 目录
 
@@ -124,10 +124,10 @@ logs.txt / app.out.log   日志
     "main": {
       "messages": [
         { "role": "user", "content": "...", "ts": 1700000000000 },
-        { "role": "assistant", "content": "...", "ts": 1700000000000 }
-      ]
-    }
-  }
+        { "role": "assistant", "content": "...", "ts": 1700000000000 },
+      ],
+    },
+  },
 }
 ```
 
@@ -137,14 +137,19 @@ logs.txt / app.out.log   日志
 {
   "main": {
     "main": {
-      "affection": 22, "trust": 16, "familiarity": 11, "energy": 79,
-      "mood": "happy", "userMood": "happy", "turns": 1,
+      "affection": 22,
+      "trust": 16,
+      "familiarity": 11,
+      "energy": 79,
+      "mood": "happy",
+      "userMood": "happy",
+      "turns": 1,
       "episodes": [{ "ts": 0, "summary": "...", "emotion": "happy", "weight": 2 }],
       "facts": [{ "ts": 0, "text": "喜欢猫", "confidence": 0.7 }],
       "insights": ["..."],
-      "updatedAt": 0
-    }
-  }
+      "updatedAt": 0,
+    },
+  },
 }
 ```
 
@@ -220,17 +225,17 @@ logs.txt / app.out.log   日志
 
 ## 6. 关键设计决策
 
-| 决策 | 选择 | 理由 |
-| --- | --- | --- |
-| 独立 vs DSH 插件 | 独立 Electron + in-process 伪 ctx | 不装 DSH 也能用；保留插件路由/helper |
-| 语音框架 | LiveKit + Python Agent | AEC/重连/打断/设备切换；Python 生态 STT/TTS 成熟 |
-| Agent 语言 | 先 Python，后评估 Node | Python 模型生态；P7 试点 agents-js |
-| TTS | Edge 默认，Melo 兜底 | Edge 音色好；Melo 离线可用的保底 |
-| 记忆 | JSON 文件，不上数据库 | 单机、小数据、易备份；避免 SQLite 迁移成本 |
-| 唤醒 | STT 后过滤 | 不引入额外唤醒模型；10 秒空闲后要求唤醒词 |
-| 情感 | 状态 + 启发式，不额外调 LLM | 零 token、可解释、可重置 |
-| 设置 | 独立 BrowserWindow | 不跳 Edge；统一标签页 |
-| 安全 | 回环 + 随机端口 + 令牌 + ACL | 本机多进程/多端共享，不暴露内网 |
+| 决策             | 选择                              | 理由                                             |
+| ---------------- | --------------------------------- | ------------------------------------------------ |
+| 独立 vs DSH 插件 | 独立 Electron + in-process 伪 ctx | 不装 DSH 也能用；保留插件路由/helper             |
+| 语音框架         | LiveKit + Python Agent            | AEC/重连/打断/设备切换；Python 生态 STT/TTS 成熟 |
+| Agent 语言       | 先 Python，后评估 Node            | Python 模型生态；P7 试点 agents-js               |
+| TTS              | Edge 默认，Melo 兜底              | Edge 音色好；Melo 离线可用的保底                 |
+| 记忆             | JSON 文件，不上数据库             | 单机、小数据、易备份；避免 SQLite 迁移成本       |
+| 唤醒             | STT 后过滤                        | 不引入额外唤醒模型；10 秒空闲后要求唤醒词        |
+| 情感             | 状态 + 启发式，不额外调 LLM       | 零 token、可解释、可重置                         |
+| 设置             | 独立 BrowserWindow                | 不跳 Edge；统一标签页                            |
+| 安全             | 回环 + 随机端口 + 令牌 + ACL      | 本机多进程/多端共享，不暴露内网                  |
 
 ---
 
@@ -248,18 +253,18 @@ logs.txt / app.out.log   日志
 
 ## 8. 阶段路线（实际状态）
 
-| 阶段 | 内容 | 状态 |
-| --- | --- | --- |
-| P0 | clone 完整仓库、构建独立应用、项目数据目录 | 完成 |
-| P1 | `DSH_PET_HOME`、设置中心、多服务商、密钥分离 | 完成 |
-| P2 | LiveKit/Agent supervisor、按需启停、空闲回收 | 完成（Agent 仍有 job 子进程） |
-| P3 | 文本对话、记忆目录迁移、气泡式流式 | 完成（非 SSE 对话框） |
-| P4 | 隐藏语音窗、字幕、听/想/说、唤醒词、无 PTT | 完成 |
-| P5 | Edge 音色/试听、MeloTTS、情感韵律 | 完成 |
-| P6 | 情感养成 v1、episodes/facts/反思/动画 | 完成 |
-| P6.5 | 用量/主动/专注/提醒/回忆录/气泡按钮/语音情绪/多宠物 | 完成 v1 |
-| P7 | Node Agent（agents-js）试点 | 未开始 |
-| P8 | 打包、模型按需下载、首启向导、自动更新 | 未开始 |
+| 阶段 | 内容                                                | 状态                          |
+| ---- | --------------------------------------------------- | ----------------------------- |
+| P0   | clone 完整仓库、构建独立应用、项目数据目录          | 完成                          |
+| P1   | `DSH_PET_HOME`、设置中心、多服务商、密钥分离        | 完成                          |
+| P2   | LiveKit/Agent supervisor、按需启停、空闲回收        | 完成（Agent 仍有 job 子进程） |
+| P3   | 文本对话、记忆目录迁移、气泡式流式                  | 完成（非 SSE 对话框）         |
+| P4   | 隐藏语音窗、字幕、听/想/说、唤醒词、无 PTT          | 完成                          |
+| P5   | Edge 音色/试听、MeloTTS、情感韵律                   | 完成                          |
+| P6   | 情感养成 v1、episodes/facts/反思/动画               | 完成                          |
+| P6.5 | 用量/主动/专注/提醒/回忆录/气泡按钮/语音情绪/多宠物 | 完成 v1                       |
+| P7   | Node Agent（agents-js）试点                         | 未开始                        |
+| P8   | 打包、模型按需下载、首启向导、自动更新              | 未开始                        |
 
 ---
 

@@ -5,13 +5,13 @@
 
 ## 体积现状（实测）
 
-| 项 | 约 | 说明 |
-| --- | --- | --- |
-| `dsh-pet-repo/dsh-pet/assets` | 125 MB | 106 个 webm + 表情包/字体，桌宠本体必需 |
-| `dsh-pet-repo/dsh-pet/node_modules` | 250 MB | 仅开发/构建，发布不应带 |
-| `dsh-pet/`（npm 包副本） | 已删除（-63.5 MB） | 与 repo 源重复，保留 `dsh-pet-repo/dsh-pet` 一份 |
-| `voice/models` | 570 MB → 411 MB | 删除 159 MB 的 `melo-tts.tar.bz2` 后；含 SenseVoice 239 MB + Melo 170 MB |
-| `dsh-pet-repo/dsh-pet/src` | 2.2 MB | 代码本身很小 |
+| 项                                  | 约                 | 说明                                                                     |
+| ----------------------------------- | ------------------ | ------------------------------------------------------------------------ |
+| `dsh-pet-repo/dsh-pet/assets`       | 125 MB             | 106 个 webm + 表情包/字体，桌宠本体必需                                  |
+| `dsh-pet-repo/dsh-pet/node_modules` | 250 MB             | 仅开发/构建，发布不应带                                                  |
+| `dsh-pet/`（npm 包副本）            | 已删除（-63.5 MB） | 与 repo 源重复，保留 `dsh-pet-repo/dsh-pet` 一份                         |
+| `voice/models`                      | 570 MB → 411 MB    | 删除 159 MB 的 `melo-tts.tar.bz2` 后；含 SenseVoice 239 MB + Melo 170 MB |
+| `dsh-pet-repo/dsh-pet/src`          | 2.2 MB             | 代码本身很小                                                             |
 
 ## 已完成
 

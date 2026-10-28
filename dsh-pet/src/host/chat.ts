@@ -91,7 +91,16 @@ export async function generateChat(input: ChatGenerateInput): Promise<ChatGenera
   // 兜底文案与失败分支同源，避免两处字面量漂移
   let last: ChatGenerateResult = { ok: false, reason: 'generate-error', message: noTextReason(undefined) };
   for (const [i, sel] of candidates.entries()) {
-    const result = await generateWith(ctx, { llm, sel, system, history, userText, pool, image, onDelta: input.onDelta });
+    const result = await generateWith(ctx, {
+      llm,
+      sel,
+      system,
+      history,
+      userText,
+      pool,
+      image,
+      onDelta: input.onDelta,
+    });
     if (result.ok) return result;
     last = result;
     // 回落要留痕：配的模型没生效时能在日志里看到原因（否则「我明明配了 A，怎么还是用 B」没法查）

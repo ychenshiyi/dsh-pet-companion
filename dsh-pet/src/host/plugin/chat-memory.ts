@@ -273,11 +273,7 @@ export function createChatMemory(deps: ChatMemoryInput) {
         log.info(`[dsh-pet] 情感更新 pet=${petId} mood=${next.mood} affection=${next.affection} trust=${next.trust}`);
       }
       // 回复写进 S（与碎碎念同一个叶子：前端本来就是同一条展示链路）
-      state.writePet(
-        petId,
-        'say',
-        generated.image ? { text: replyText, image: generated.image } : { text: replyText },
-      );
+      state.writePet(petId, 'say', generated.image ? { text: replyText, image: generated.image } : { text: replyText });
       // 同一份文本随返回值带出（叶子照写，不是二选一）
       return { ok: true as const, text: replyText, ...(generated.image ? { image: generated.image } : {}) };
     });
@@ -319,7 +315,9 @@ export function createChatMemory(deps: ChatMemoryInput) {
   /** 情感状态：GET /emotion 用；找不到宠物明确失败。 */
   const getEmotion = async (
     petId: string,
-  ): Promise<{ ok: true; state: EmotionState; enabled: boolean } | { ok: false; reason: 'unknown-pet'; message: string }> => {
+  ): Promise<
+    { ok: true; state: EmotionState; enabled: boolean } | { ok: false; reason: 'unknown-pet'; message: string }
+  > => {
     const cfg = readAllConfig(configPaths);
     const found = findPetInstance(cfg, petId);
     if (!found) return { ok: false as const, reason: 'unknown-pet' as const, message: '没有这只桌宠：' + petId };

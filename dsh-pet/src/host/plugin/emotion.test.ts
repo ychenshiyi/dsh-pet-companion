@@ -22,10 +22,7 @@ test('负向对话降低好感并进入低落/生气', () => {
 
 test('从自述里抽取事实并去重', () => {
   const once = applyEmotionTurn(defaultEmotion(), '我叫小明，我的生日是5月1日', '记住啦');
-  assert.deepEqual(
-    once.facts.map((fact) => fact.text).sort(),
-    ['名字是小明', '生日是5月1日'].sort(),
-  );
+  assert.deepEqual(once.facts.map((fact) => fact.text).sort(), ['名字是小明', '生日是5月1日'].sort());
   const twice = applyEmotionTurn(once, '我叫小明', '嗯');
   assert.equal(twice.facts.filter((fact) => fact.text === '名字是小明').length, 1);
 });
