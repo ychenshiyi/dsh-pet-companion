@@ -360,3 +360,19 @@ dsh-pet app（Electron）
   - 提醒/日程：15 秒检查，到点气泡，`reminders.json` 持久化
   - 多宠物音色/人设：设置里选择语音代表宠物，覆盖 voice/persona；同一时间一只
   - `pnpm typecheck` / `pnpm test`（1519 passed）通过
+
+---
+
+## 11. 上游同步状态（2026-10-28）
+
+- 本分支基于上游 `b78e3fc`（`feat(surface): any 放行 display:none`）。
+- 上游 `origin/main` 已到 `e77a6f5`，**领先 18 个提交**，其中包含一套独立的语音合成实现：
+  `dsh-pet/src/shared/voice.ts`、`dsh-pet/src/host/voice/voices.ts`、语音播报按钮、音色列表接口。
+- 与本分支新写的 `src/app/companion/voices.ts` + `runtime/voice/` **功能重叠**。
+- 同步（rebase / merge）时预计冲突的文件（13 个）：
+  `README.md`、`dsh-pet/package.json`、`runtime/electron-helper/{main/ipc,sprite/bubble,sprite/input,sprite/menu}.js`、
+  `src/app/main.ts`、`src/host/index.ts`、`src/host/open-target.test.ts`、`src/host/plugin/{chat-memory,setup}.ts`、
+  `src/host/routes/{chat,types}.ts`。
+
+**建议顺序**：先让本分支功能稳定并出包，再单独开一次「上游同步」专项：逐文件挑上游改动，
+语音部分二选一（保留 companion 的进程编排，或改用上游的 shared/voice 抽象），不要两边各留一套。
