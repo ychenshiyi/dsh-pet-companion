@@ -12,8 +12,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 export interface RequestSecurity {
   /** 进程能力令牌，只写入本机启动清单，绝不进 HTTP 响应或日志。 */
   readonly token: string;
-  /** 生成带令牌的设置页地址。 */
-  authenticatedUrl(baseUrl: string): string;
+  /** 生成带令牌的设置页地址（path 默认 /standalone-ai/）。 */
+  authenticatedUrl(baseUrl: string, path?: string): string;
   /** 判定请求是否放行；拒绝时已经写好响应。 */
   authorize(req: IncomingMessage, res: ServerResponse, allowFileOrigin?: boolean): boolean;
 }
@@ -30,20 +30,42 @@ function publicRead(req: IncomingMessage): boolean {
   // 插件在分发前会解码路径，鉴权必须用同一种拼写判断。
   const path = decodeURIComponent(new URL(req.url ?? '/', 'http://127.0.0.1').pathname);
   if (req.method !== 'GET' && req.method !== 'HEAD') return false;
-  if (['/standalone-ai/settings', '/shutdown'].includes(path)) return false;
+  if (
+    [
+      '/standalone-ai/settings',
+      '/companion/settings',
+      '/companion/info',
+      '/companion/test',
+      '/shutdown',
+    ].includes(path)
+  )
+    return false;
   if (/^\/dsh-pet-\d+\/(?:whisper|chat)(?:\/|$)/.test(path)) return false;
   return (
-    ['/', '/health', '/standalone-ai/', '/standalone-ai/settings.js', '/standalone-ai/settings.css'].includes(path) ||
-    /^\/dsh-pet-\d+\//.test(path)
+    [
+      '/',
+      '/health',
+      '/standalone-ai/',
+      '/standalone-ai/settings.js',
+      '/standalone-ai/settings.css',
+      '/companion/',
+      '/companion/app.js',
+      '/companion/style.css',
+      '/companion/voice/',
+      '/companion/voice.js',
+      '/companion/voice/livekit-client.umd.js',
+    ].includes(path) || /^\/dsh-pet-\d+\//.test(path)
   );
 }
 
 /** 创建请求安全门面。 */
 export function createRequestSecurity(): RequestSecurity {
-  const token = randomBytes(32).toString('base64url');
+  // 仅开发/自动化测试用：显式提供 43 位 base64url 令牌，便于本机脚本调用设置接口。
+  const override = process.env.DSH_PET_TOKEN_OVERRIDE;
+  const token = override && /^[A-Za-z0-9_-]{43}$/.test(override) ? override : randomBytes(32).toString('base64url');
   return {
     token,
-    authenticatedUrl(baseUrl) {
+    authenticatedUrl(baseUrl, path = '/standalone-ai/') {
       const base = new URL(baseUrl);
       if (
         base.protocol !== 'http:' ||
@@ -53,7 +75,8 @@ export function createRequestSecurity(): RequestSecurity {
       ) {
         throw new Error('设置地址必须是本机 HTTP 地址');
       }
-      return `${base.origin}/standalone-ai/#token=${token}`;
+      const cleanPath = path.startsWith('/') ? path : `/${path}`;
+      return `${base.origin}${cleanPath}#token=${token}`;
     },
     authorize(req, res, allowFileOrigin = false) {
       const host = req.headers.host;

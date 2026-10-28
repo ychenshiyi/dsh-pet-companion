@@ -8,7 +8,7 @@
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
+import { dshPetHome } from '../helper/electron.ts';
 import { listBalanceProviders, registerBalanceProvider } from '../balance/index.ts';
 import { migrateUserConfig, type ConfigPaths } from '../config.ts';
 import { createFileLogger, isFileLogger, setDefaultLogger, type FileLogger, type LoggerLike } from '../log-file.ts';
@@ -72,10 +72,8 @@ export interface HostSetup {
  * @returns 日志、路径、store 与两个工具函数。
  */
 export function createHostSetup(ctx: HostSetupContext): HostSetup {
-  // 用户数据根：配置与用户素材统一收敛于此（扩展包按 <插件id> 各自建目录）
-  const dshHome = resolveDshHome();
-
-  const userRoot = join(dshHome, 'dsh-pet');
+  // 用户数据根：配置与用户素材统一收敛于此（可用 DSH_PET_HOME 指到项目/便携目录）
+  const userRoot = dshPetHome();
 
   // 统一日志出口（单文件、按大小截断，见 ./log-file）：桌面版 DSH 没有控制台，ctx.logger 只写
   // stdout 等于把排障信息丢掉；base 保留终端输出。

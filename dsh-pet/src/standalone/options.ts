@@ -66,10 +66,11 @@ export function parseArgs(argv: string[]): { options: CliOptions } | { error: st
  * 推导配置路径集（宿主半侧那份推导的只读镜像）。
  * @param root - 插件包根目录。
  * @param home - DSH_HOME。
+ * @param petHome - 可选：桌宠数据根（DSH_PET_HOME 覆盖）。
  * @returns 与宿主半侧一致的路径集。
  */
-export function configPathsFor(root: string, home: string): ConfigPaths {
-  const userRoot = join(home, 'dsh-pet');
+export function configPathsFor(root: string, home: string, petHome?: string): ConfigPaths {
+  const userRoot = petHome ?? join(home, 'dsh-pet');
   return {
     defaultFile: join(root, 'assets', 'config.jsonc'),
     userFile: join(userRoot, 'main-config.jsonc'),

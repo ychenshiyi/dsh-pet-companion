@@ -139,10 +139,10 @@ export interface AiConfigStore {
  * @returns 设置存储。
  * @throws 配置文件不安全或无法读取时抛出。
  */
-export function createAiConfig(home: string): AiConfigStore {
+export function createAiConfig(home: string, petDir?: string): AiConfigStore {
   let settings: Readonly<StandaloneAiSettings> = DEFAULT_AI_SETTINGS;
   try {
-    const loaded = readAiSettings(home);
+    const loaded = readAiSettings(home, petDir);
     // 持久化内容也要重新校验，坏数据不能进入内存。
     if (loaded !== undefined)
       settings = Object.freeze(validateSettings(persistedSchema.parse(loaded), DEFAULT_AI_SETTINGS));
@@ -156,7 +156,7 @@ export function createAiConfig(home: string): AiConfigStore {
     async save(input) {
       const next = validateSettings(input, settings);
       try {
-        writeAiSettings(home, next);
+        writeAiSettings(home, next, petDir);
       } catch {
         throw new Error('Cannot securely save standalone AI settings.');
       }

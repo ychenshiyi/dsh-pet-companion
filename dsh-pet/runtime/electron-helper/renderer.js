@@ -8,6 +8,23 @@
  */
 'use strict';
 
+// 语音开关状态：主进程广播，右键菜单右侧据此显示 ✓（不靠渲染端自己猜）。
+window.__voiceOn = false;
+if (window.petBridge) {
+  if (typeof window.petBridge.onVoiceStatus === 'function') {
+    window.petBridge.onVoiceStatus((state) => {
+      window.__voiceOn = !!(state && state.on);
+    });
+  }
+  if (typeof window.petBridge.getVoiceStatus === 'function') {
+    window.petBridge.getVoiceStatus()
+      .then((state) => {
+        window.__voiceOn = !!(state && state.on);
+      })
+      .catch(() => {});
+  }
+}
+
 // 配置（大声报错；失败 5s 重试）
 function showError(message) {
   console.error('[dsh-pet] ' + message);

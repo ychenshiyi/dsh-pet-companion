@@ -364,7 +364,7 @@ Object.assign(PetSprite.prototype, {
     if (isOpenShortcut(e)) {
       this.stopThrow();
       this.stopMove();
-      if (window.petBridge) window.petBridge.openDshSite(ORIGIN);
+      if (window.petBridge) window.petBridge.openSettings('');
       return;
     }
     // 积分判定已在 onPointerDown（按下即触发）完成：已触发过就只收手停住，不再播普通点击动画

@@ -20,7 +20,7 @@ import { modelCandidates, modelLabel, type ModelRef } from './model-selection.ts
 
 /** 生成失败原因（与 shared/whisper.ts 的 WhisperState 失败分支同构）。 */
 export type ChatGenerateResult =
-  | { ok: true; text: string; image?: string }
+  | { ok: true; text: string; image?: string; usage?: { input: number; output: number } }
   | { ok: false; reason: 'provider-missing' | 'generate-error'; message?: string };
 
 /** 记忆中的一条消息：GET /chat 返回的窗口条目就是它。 */
@@ -63,6 +63,8 @@ export interface ChatGenerateInput {
   readonly preferred?: ModelRef;
   /** 本轮附带的图片；缺省 = 纯文本请求，数据路径与加入图片前一致。 */
   readonly image?: PetImageRef;
+  /** 流式增量：每收到一段正文回调一次（气泡可边生成边显示）；失败时不保证回调。 */
+  readonly onDelta?: (text: string) => void;
 }
 
 /**
@@ -89,7 +91,7 @@ export async function generateChat(input: ChatGenerateInput): Promise<ChatGenera
   // 兜底文案与失败分支同源，避免两处字面量漂移
   let last: ChatGenerateResult = { ok: false, reason: 'generate-error', message: noTextReason(undefined) };
   for (const [i, sel] of candidates.entries()) {
-    const result = await generateWith(ctx, { llm, sel, system, history, userText, pool, image });
+    const result = await generateWith(ctx, { llm, sel, system, history, userText, pool, image, onDelta: input.onDelta });
     if (result.ok) return result;
     last = result;
     // 回落要留痕：配的模型没生效时能在日志里看到原因（否则「我明明配了 A，怎么还是用 B」没法查）
@@ -112,14 +114,18 @@ interface GenerateOnce {
   readonly userText: string;
   readonly pool: MemeEntry[];
   readonly image?: PetImageRef;
+  readonly onDelta?: (text: string) => void;
 }
 
 /** 用一个确定的 provider/model 跑一次对话生成（失败原样返回结构化原因，不吞）。 */
 async function generateWith(ctx: { llm?: unknown }, once: GenerateOnce): Promise<ChatGenerateResult> {
-  const { llm, sel, system, history, userText, pool, image } = once;
+  const { llm, sel, system, history, userText, pool, image, onDelta } = once;
   // 历史 → dsh-llm 消息：user 经 createUserMessage（plugin 来源），assistant 经 createAssistantMessage
   // （provider/model 只是消息的角色载体，不涉及适配器回放）
-  const historyMessages = history.map((m) =>
+  // 独立 AI 适配器要求 messages[0] 必须是 user（切轮次时可能从 assistant 开头）：丢掉开头孤立的 assistant。
+  const firstUser = history.findIndex((message) => message.role === 'user');
+  const orderedHistory = firstUser > 0 ? history.slice(firstUser) : history;
+  const historyMessages = orderedHistory.map((m) =>
     m.role === 'user'
       ? createUserMessage({
           content: [{ type: 'text', text: m.content }],
@@ -167,9 +173,22 @@ async function generateWith(ctx: { llm?: unknown }, once: GenerateOnce): Promise
   };
 
   const assembler = new BlockAssembler();
+  let streamed = '';
   try {
     for await (const chunk of llm.stream(options)) {
       assembler.push(chunk as Parameters<BlockAssembler['push']>[0]);
+      if (onDelta) {
+        const partial = assembler
+          .blocks()
+          .filter((b) => b.type === 'text')
+          .map((b) => ('text' in b ? (b as { text: string }).text : ''))
+          .join('')
+          .trim();
+        if (partial && partial !== streamed) {
+          streamed = partial;
+          onDelta(partial);
+        }
+      }
     }
   } catch (e) {
     return {
@@ -185,8 +204,13 @@ async function generateWith(ctx: { llm?: unknown }, once: GenerateOnce): Promise
     .join('')
     .trim();
   if (!text) return { ok: false, reason: 'generate-error', message: noTextReason(assembler.finish) };
+  const usage = assembler.usage
+    ? { input: assembler.usage.inputTokens ?? 0, output: assembler.usage.outputTokens ?? 0 }
+    : undefined;
   // 配图解析：命中池内才采纳并剥离标记；未选 / 幻觉名称 → 原样返回纯文本
-  if (!wantImage) return { ok: true, text };
+  if (!wantImage) return usage ? { ok: true, text, usage } : { ok: true, text };
   const picked = extractChatImage(text, pool);
-  return picked.image ? { ok: true, text: picked.text, image: picked.image } : { ok: true, text: picked.text };
+  return picked.image
+    ? { ok: true, text: picked.text, image: picked.image, ...(usage ? { usage } : {}) }
+    : { ok: true, text: picked.text, ...(usage ? { usage } : {}) };
 }

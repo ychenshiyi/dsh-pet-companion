@@ -18,6 +18,8 @@ type ImageAdmission =
 /** 对话领域：未命中返回 undefined，命中返回应答。 */
 export async function handleChatRoutes(deps: PetRouteDeps, input: RouteInput): Promise<RouteResult | undefined> {
   const { configPaths, log, memoryPath, memoryRounds, readMemory, requirePet } = deps;
+  const { getEmotion, resetEmotion } = deps;
+  const { usage, reminders } = deps;
   const { body, method, rest, url } = input;
 
   // 对话：GET /chat 读最近记忆窗口（截尾 chatMemoryRounds 轮，一次读、不是轮询），
@@ -74,6 +76,95 @@ export async function handleChatRoutes(deps: PetRouteDeps, input: RouteInput): P
       // 配置已由 readAllConfig 保证正确（不再有 config-error 分支）；其余（IO/LLM）→ generate-error
       return failResult('generate-error', e instanceof Error ? e.message : String(e));
     }
+  }
+
+  // 情感养成：GET /emotion?pet= 读状态；POST /emotion/reset?pet= 重置。
+  // 与对话记忆同一套 pet 解析；找不到宠物明确失败。
+  if (rest === 'emotion' || rest === 'emotion/reset') {
+    const isReset = rest === 'emotion/reset';
+    if (isReset ? method !== 'POST' : method !== 'GET') return methodNotAllowed();
+    try {
+      const who = requirePet(url.searchParams, () => readAllConfig(configPaths), { surface: false });
+      if (!who.ok) return who.res;
+      if (isReset) {
+        const result = await resetEmotion(who.petId);
+        return result.ok ? okResult({ ok: true, state: result.state, enabled: true }) : failResult(result.reason, result.message);
+      }
+      const result = await getEmotion(who.petId);
+      return result.ok
+        ? okResult({ ok: true, state: result.state, enabled: result.enabled })
+        : failResult(result.reason, result.message);
+    } catch (e) {
+      return failResult('generate-error', e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  // 用量账本：GET /usage 返回今日/总量/按端统计。前端面板只读。
+  if (rest === 'usage') {
+    if (method !== 'GET') return methodNotAllowed();
+    return okResult({ ok: true, ...(await usage.summary(7)) });
+  }
+
+  // 提醒/日程：GET 列表；POST 新增；DELETE ?id= 删除。
+  if (rest === 'reminders') {
+    if (method === 'GET') return okResult({ ok: true, items: await reminders.list() });
+    if (method === 'DELETE') {
+      const id = url.searchParams.get('id') ?? '';
+      if (!id) return failResult('bad-request', 'id 必填');
+      return okResult({ ok: true, removed: await reminders.remove(id) });
+    }
+    if (method !== 'POST') return methodNotAllowed();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(body ?? 'null');
+    } catch {
+      return invalidJson();
+    }
+    const o = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+    const text = String(o.text ?? '').trim();
+    const dueAt = Number(o.dueAt);
+    const cfg = readAllConfig(configPaths);
+    const who = requirePet(url.searchParams, () => cfg, { surface: false });
+    if (!who.ok) return who.res;
+    if (!text || text.length > 200) return failResult('bad-request', '提醒文本需为 1–200 字');
+    if (!Number.isFinite(dueAt) || dueAt < Date.now() - 60_000) return failResult('bad-request', 'dueAt 必须是未来时间戳');
+    return okResult({ ok: true, item: await reminders.add(text, dueAt, who.petId) });
+  }
+
+  // 回忆录：把对话记忆 + 情感/事实/成长日志导出成 Markdown（前端下载）。
+  if (rest === 'memoir') {
+    if (method !== 'GET') return methodNotAllowed();
+    const cfg = readAllConfig(configPaths);
+    const who = requirePet(url.searchParams, () => cfg, { surface: false });
+    if (!who.ok) return who.res;
+    const mem = await readMemory();
+    const messages = Array.isArray(mem[who.entry]?.[who.petId]?.messages)
+      ? mem[who.entry][who.petId].messages
+      : [];
+    const emotion = await getEmotion(who.petId);
+    const lines: string[] = [`# ${who.petId} 的回忆录`, ''];
+    lines.push('## 对话');
+    for (const message of messages) {
+      const role = message.role === 'assistant' ? '桌宠' : '主人';
+      lines.push(`- ${role}：${message.content}`);
+    }
+    if (emotion.ok) {
+      const state = emotion.state;
+      lines.push('', '## 关系状态', `好感 ${state.affection} / 信任 ${state.trust} / 熟悉 ${state.familiarity} / 精力 ${state.energy}，心情 ${state.mood}`);
+      if (state.facts.length > 0) {
+        lines.push('', '## 记得的事');
+        for (const fact of state.facts) lines.push(`- ${fact.text}`);
+      }
+      if (state.episodes.length > 0) {
+        lines.push('', '## 最近情节');
+        for (const episode of state.episodes.slice(-20)) lines.push(`- [${episode.emotion}] ${episode.summary}`);
+      }
+      if (state.insights.length > 0) {
+        lines.push('', '## 成长日志');
+        for (const insight of state.insights) lines.push(`- ${insight}`);
+      }
+    }
+    return okResult({ ok: true, markdown: lines.join('\n') });
   }
 
   return undefined;

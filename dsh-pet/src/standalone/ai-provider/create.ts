@@ -39,6 +39,7 @@ async function saveSettings(runtime: AiRuntime, store: AiStore, input: unknown):
  * @param home - DSH_HOME。
  * @param logger - 日志出口。
  * @param dependencies - 测试注入的传输与时钟。
+ * @param petHome - 可选：桌宠数据根（DSH_PET_HOME 覆盖）。
  * @returns AI 服务。
  * @throws 设置无法安全读取时抛出。
  */
@@ -46,10 +47,11 @@ export function createStandaloneAi(
   home: string,
   logger: StandaloneLogger,
   dependencies: StandaloneAiDependencies = {},
+  petHome?: string,
 ): StandaloneAiService {
   let store: AiStore;
   try {
-    store = createAiConfig(home);
+    store = createAiConfig(home, petHome);
   } catch {
     logger.error('Cannot securely load standalone AI settings.');
     // 持久化损坏或权限不安全时不能顺势启用环境里的旧凭据，宁可整体失败。

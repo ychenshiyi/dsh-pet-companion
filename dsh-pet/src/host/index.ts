@@ -18,6 +18,8 @@ import { createSessionNotify } from './plugin/session-notify.ts';
 import { createPetLookup } from './plugin/pet-lookup.ts';
 import { createDownloadReport } from './plugin/download-report.ts';
 import { createWorkStatusBridge } from './plugin/work-status-bridge.ts';
+import { createReminderStore } from './plugin/reminders.ts';
+import { join } from 'node:path';
 import type { PetRouteDeps } from './routes/types.ts';
 
 /** 插件行 id（与 cordis.patch.yml 一致） */
@@ -68,6 +70,7 @@ export function apply(ctx: any): void {
   } = sessionNotify;
   const chatMemory = createChatMemory({ ctx, configPaths, log, memeDirsFor, state, userRoot });
   const { lastWhisperAt, publishWhisper, chatWithPet, getActivePetId, setActivePetId } = chatMemory;
+  const reminders = createReminderStore(process.env.DSH_PET_REMINDER_FILE || join(userRoot, 'reminders.json'));
 
   const balancePoll = createBalancePoll({ ctx, configPaths, getActivePetId, log, state });
   const { effectivePetList, balancePeriodSec, whisperPeriodSec, refreshBalance, resolveActivePetId, petDisplayName } =
@@ -90,6 +93,7 @@ export function apply(ctx: any): void {
     ...petLookup,
     ...workStatusBridge,
     ...chatMemory,
+    reminders,
     ...balancePoll,
     ...desktopHelper,
     ...sessionNotify,
@@ -127,6 +131,9 @@ export function apply(ctx: any): void {
     refreshBalance,
     standaloneAiPolicy,
     whisperPeriodSec,
+    reminders,
+    userRoot,
+    state,
   });
 
   registerPetCommand({ ctx, effectivePetList, petDisplayName, resolveActivePetId, setActivePetId });

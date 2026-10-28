@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { flattenPetList, readAllConfig } from '../host/config.ts';
-import { dshHomeDir, packageRoot } from '../host/helper-process.ts';
+import { dshHomeDir, dshPetHome, packageRoot } from '../host/helper-process.ts';
 import { apply } from '../host/index.ts';
 import { defaultLog, setDefaultLogger } from '../host/log-file.ts';
 import { runCheck, packageVersion } from './check.ts';
@@ -27,7 +27,8 @@ import { ROUTE_PATH } from '../shared/constants.ts';
 /** 启动独立模式：先起服务拿到端口，再 apply。 */
 async function run(logger: StandaloneLogger, options: { port: number }): Promise<void> {
   const home = dshHomeDir();
-  const paths = configPathsFor(packageRoot, home);
+  const petHome = dshPetHome();
+  const paths = configPathsFor(packageRoot, home, petHome);
 
   // 包内默认配置缺失时宿主半侧每个请求都会失败，先给可操作的诊断。
   if (!existsSync(paths.defaultFile)) {
@@ -44,7 +45,7 @@ async function run(logger: StandaloneLogger, options: { port: number }): Promise
   // 用可替换的转发器解耦，让服务构造时只拿到「将来会是谁」。
   let forwardShutdown: (reason: string) => void = () => {};
   const portRef = { value: options.port };
-  const ai = createStandaloneAi(home, logger);
+  const ai = createStandaloneAi(home, logger, {}, petHome);
   const security = createRequestSecurity();
   const context = createStandaloneContext({
     port: () => portRef.value,
@@ -165,7 +166,7 @@ async function main(): Promise<number> {
     return 0;
   }
   // 独立模式常常没有终端，日志必须同时落盘；插件会复用同一个 logger。
-  const logger = createStandaloneLogger({ file: join(dshHomeDir(), 'dsh-pet', 'logs.txt') });
+  const logger = createStandaloneLogger({ file: join(dshPetHome(), 'logs.txt') });
   // 纯模块没有 ctx.logger，靠默认出口落盘。
   setDefaultLogger(logger);
   if (options.check) return runCheck(logger);

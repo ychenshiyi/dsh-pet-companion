@@ -17,6 +17,11 @@ export default tseslint.config(
     files: ['**/*.ts'],
     rules: {
       'no-undef': 'off',
+      // 下划线前缀 = 有意不使用的绑定（典型场景：解构时剔除敏感字段 apiKey: _apiKey）
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
     },
   },
   {

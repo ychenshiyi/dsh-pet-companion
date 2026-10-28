@@ -10,7 +10,6 @@ import { bindOpenChat } from './open-chat.ts';
 import {
   buildMenuTree,
   buildMoreBranch,
-  displayMenuBranch,
   mountContextMenu,
   type MenuNode,
 } from '../../../shared/menu.ts';
@@ -170,8 +169,6 @@ export function createCardEntry(rt: CardEntryRuntime) {
         { label: '碎碎念', action: 'whisper' },
         { label: '对话', action: 'chat', hint: CHAT_HOTKEY_HINT },
         { label: '回到初始位置', action: 'home' },
-        // 显示位置子菜单与桌面端同一份；改成不含 web 的值后本宠物会从页面消失。
-        displayMenuBranch(),
       ];
       const tree: MenuNode[] = [...tools, ...buildMenuTree(cfgRef.current.animations), ...(more ? [more] : [])];
       if (!tree.length) return;

@@ -14,6 +14,9 @@ import type { PetImageRef } from '../image-attachment.ts';
 import { limitPool, pickMeme, readMemePool } from '../memes.ts';
 import { generateWhisper } from '../whisper.ts';
 import { configuredModel } from '../model-selection.ts';
+import { createEmotionStore, emotionPrompt, moodAnim, type EmotionState } from './emotion.ts';
+import { readRuntimePolicy } from './policy.ts';
+import { createUsageStore } from './usage.ts';
 import type { HostSetup } from './setup.ts';
 import type { HostContext } from './context.ts';
 
@@ -41,7 +44,14 @@ export function createChatMemory(deps: ChatMemoryInput) {
 
   // 对话记忆文件（唯一读写方 = 本进程；浏览器/桌面两端都只是客户端 → 同一实例天然共享同一份记忆）。
   // 结构双层：{ <种类桶 assetRoot ?? petId>: { <实例 id>: { messages: ChatMemoryMessage[] } } }
-  const memoryPath = join(userRoot, 'memory.json');
+  // 路径可由伴侣设置（chat.memoryDir）通过 DSH_PET_MEMORY_FILE 指定；默认仍在数据根。
+  const memoryPath = process.env.DSH_PET_MEMORY_FILE || join(userRoot, 'memory.json');
+
+  // 情感养成 v1：与 memory.json 同目录；设置页可通过环境变量关闭。
+  const emotionPath = process.env.DSH_PET_EMOTION_FILE || join(userRoot, 'emotion.json');
+  const emotion = createEmotionStore(emotionPath);
+  const emotionEnabled = process.env.DSH_PET_EMOTION_ENABLED !== '0';
+  const usage = createUsageStore(process.env.DSH_PET_USAGE_FILE || join(userRoot, 'usage.jsonl'));
 
   // 对话写操作串行队列：read-modify-write 排队执行，防两端同时对话时交错写盘
   let chatQueue: Promise<void> = Promise.resolve();
@@ -116,13 +126,16 @@ export function createChatMemory(deps: ChatMemoryInput) {
     // 明确失败、不生成不写 S——写下去就是一只已不存在宠物的幽灵叶子（常驻到进程重启）。
     if (!found) return { ok: false, reason: 'unknown-pet', message: '没有这只桌宠：' + petId };
     const system = petSystemPrompt(found);
+    const withEmotion = emotionEnabled
+      ? `${system}\n\n${emotionPrompt(await emotion.read(found.entry, petId))}`
+      : system;
     // 配图：开关关闭 / 池为空 / 池内图片全缺失 → 纯文本（不报错，只是没有图）
     const meme =
       found.conf.whisperImageEnabled === true
         ? pickMeme(readMemePool(found.conf.memes, memeDirsFor(found.entry)))
         : undefined;
     // 模型：条目配置的 whisperModel 优先（留空 = 不指定）；生成侧失败会回落到当前对话的模型重试一次
-    const result = await generateWhisper(ctx, system, meme, configuredModel(found.conf, 'whisperModel'));
+    const result = await generateWhisper(ctx, withEmotion, meme, configuredModel(found.conf, 'whisperModel'));
     if (!result.ok) {
       // 失败不写 S：静默跳过 + warn，不伪造文案、不弹错误气泡
       log.warn(
@@ -166,6 +179,10 @@ export function createChatMemory(deps: ChatMemoryInput) {
       const rounds = memoryRounds(found.conf);
       // 人设：实例级 whisperPrompt 优先，没写回落所属条目（与碎碎念同一拼装）
       const system = petSystemPrompt(found);
+      // 关系状态只进提示词，不改历史；关闭情感时完全跳过。
+      const systemWithEmotion = emotionEnabled
+        ? `${system}\n\n${emotionPrompt(await emotion.read(found.entry, petId))}`
+        : system;
       // 配图：开关关闭 → 空池（指令与解析都不介入）；目录链按所属条目取。
       // 张数上限（chatImageLimit，0 = 不限制）：整张清单每条消息都要附，截断后费用上限可控。
       const pool =
@@ -194,17 +211,48 @@ export function createChatMemory(deps: ChatMemoryInput) {
         );
       }
       // 模型：条目配置的 chatModel 优先（留空 = 不指定）；生成侧失败会回落到当前对话的模型重试一次
+      // 流式气泡：LLM 增量直接写 say，前端 1s 轮询会看到文字逐步变长；限流避免写爆 state。
+      let lastStreamAt = 0;
       const generated = await generateChat({
         ctx,
-        system,
+        system: systemWithEmotion,
         history: list,
         userText: text,
         pool,
         preferred: configuredModel(found.conf, 'chatModel'),
         image,
+        onDelta: (partial) => {
+          const now = Date.now();
+          if (now - lastStreamAt < 120) return;
+          lastStreamAt = now;
+          state.writePet(petId, 'say', { text: partial, anim: false });
+        },
       });
       if (!generated.ok) return generated;
       const now = Date.now();
+      // 用量账本：优先用模型返回的真实 token；缺失时按字符估算（面板会标“估算”）
+      const inputTokens =
+        generated.usage?.input ?? Math.ceil((systemWithEmotion.length + text.length + list.length * 20) / 4);
+      const outputTokens = generated.usage?.output ?? Math.ceil(generated.text.length / 4);
+      await usage.record({
+        ts: now,
+        petId,
+        surface: 'text',
+        inputTokens,
+        outputTokens,
+      });
+      const policy = readRuntimePolicy(userRoot);
+      let replyText = generated.text;
+      if (policy.usage.dailyLimit > 0) {
+        const summary = await usage.summary(1);
+        const used = summary.today.input + summary.today.output;
+        const warnAt = Math.round((policy.usage.dailyLimit * policy.usage.warnPercent) / 100);
+        if (used >= policy.usage.dailyLimit) {
+          replyText += `\n\n（今日用量已达上限：${used}/${policy.usage.dailyLimit} tokens）`;
+        } else if (used >= warnAt) {
+          replyText += `\n\n（今日用量已到 ${policy.usage.warnPercent}%：${used}/${policy.usage.dailyLimit} tokens）`;
+        }
+      }
       // 图信息只存不送：记忆要能还原「这一轮带过图、配过哪张」（聊天记录存档），
       // 但历史回放一律只带正文——否则每轮都会把旧图重发一遍给模型。
       entry.messages.push({ role: 'user', content: text, ts: now, ...(image ? { image } : {}) });
@@ -215,14 +263,23 @@ export function createChatMemory(deps: ChatMemoryInput) {
         ...(generated.image ? { meme: generated.image } : {}),
       });
       await writeMemory(mem);
+      if (emotionEnabled) {
+        const before = await emotion.read(found.entry, petId);
+        const next = await emotion.apply(found.entry, petId, text, replyText);
+        if (next.mood !== before.mood) {
+          const anim = moodAnim(next.mood);
+          if (anim) state.writePet(petId, 'anim', { name: anim });
+        }
+        log.info(`[dsh-pet] 情感更新 pet=${petId} mood=${next.mood} affection=${next.affection} trust=${next.trust}`);
+      }
       // 回复写进 S（与碎碎念同一个叶子：前端本来就是同一条展示链路）
       state.writePet(
         petId,
         'say',
-        generated.image ? { text: generated.text, image: generated.image } : { text: generated.text },
+        generated.image ? { text: replyText, image: generated.image } : { text: replyText },
       );
       // 同一份文本随返回值带出（叶子照写，不是二选一）
-      return { ok: true as const, text: generated.text, ...(generated.image ? { image: generated.image } : {}) };
+      return { ok: true as const, text: replyText, ...(generated.image ? { image: generated.image } : {}) };
     });
 
   /** 删除某只宠物的对话记忆：`ts` 缺省 = 清空全部，给了 ts = 只删命中的轮（一轮两条共享 ts，成对删）。
@@ -259,6 +316,28 @@ export function createChatMemory(deps: ChatMemoryInput) {
       return { ok: true as const, removed };
     });
 
+  /** 情感状态：GET /emotion 用；找不到宠物明确失败。 */
+  const getEmotion = async (
+    petId: string,
+  ): Promise<{ ok: true; state: EmotionState; enabled: boolean } | { ok: false; reason: 'unknown-pet'; message: string }> => {
+    const cfg = readAllConfig(configPaths);
+    const found = findPetInstance(cfg, petId);
+    if (!found) return { ok: false as const, reason: 'unknown-pet' as const, message: '没有这只桌宠：' + petId };
+    return { ok: true as const, state: await emotion.read(found.entry, petId), enabled: emotionEnabled };
+  };
+
+  /** 重置情感状态（设置页「重置成长」）。 */
+  const resetEmotion = async (
+    petId: string,
+  ): Promise<{ ok: true; state: EmotionState } | { ok: false; reason: 'unknown-pet'; message: string }> => {
+    const cfg = readAllConfig(configPaths);
+    const found = findPetInstance(cfg, petId);
+    if (!found) return { ok: false as const, reason: 'unknown-pet' as const, message: '没有这只桌宠：' + petId };
+    const next = await emotion.reset(found.entry, petId);
+    log.info(`[dsh-pet] 情感重置 pet=${petId}`);
+    return { ok: true as const, state: next };
+  };
+
   /** 当前活跃宠物 id（会话事件写入，余额与碎念读取）。 */
   const getActivePetId = (): string => activePetId;
 
@@ -274,6 +353,10 @@ export function createChatMemory(deps: ChatMemoryInput) {
     publishWhisper,
     chatWithPet,
     deleteHistory,
+    getEmotion,
+    resetEmotion,
+    emotionPath,
+    usage,
     getActivePetId,
     setActivePetId,
   };

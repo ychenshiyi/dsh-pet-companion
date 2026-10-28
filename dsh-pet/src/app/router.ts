@@ -15,11 +15,13 @@ import { boundedRequest, MAX_REQUEST_BYTES, MAX_SETTINGS_BYTES } from '../standa
 import { rejectRequest, type RequestSecurity } from '../standalone/request-security.ts';
 import { settingsHandler, testHandler, type StandaloneServerOptions } from '../standalone/server.ts';
 import { settingsPage, settingsScript, settingsStyle } from '../standalone/settings-page.ts';
+import type { CompanionHandlers } from './companion/routes.ts';
 
 /** 路由依赖：安全校验、AI 处理器与两个页面的数据源，全部注入以脱离 Electron 测试。 */
 interface RouterDeps {
   security: RequestSecurity;
   ai?: StandaloneServerOptions['ai'];
+  companion?: CompanionHandlers;
   log(message: string): void;
   status(port: number): unknown;
   landingPage(port: number): string;
@@ -61,10 +63,22 @@ export function startRouter(
     }
 
     const dispatch = async (request: IncomingMessage): Promise<void> => {
-      const assets: Record<string, readonly [string, string]> = {
+      const companion = deps.companion;
+      type Asset = readonly [string | ((req: IncomingMessage, res: ServerResponse) => void), string];
+      const assets: Record<string, Asset> = {
         '/standalone-ai/': [settingsPage, 'text/html'],
         '/standalone-ai/settings.js': [settingsScript, 'text/javascript'],
         '/standalone-ai/settings.css': [settingsStyle, 'text/css'],
+        ...(companion
+          ? {
+              '/companion/': [companion.page, 'text/html'],
+              '/companion/app.js': [companion.script, 'text/javascript'],
+              '/companion/style.css': [companion.style, 'text/css'],
+              '/companion/voice/': [companion.voicePage, 'text/html'],
+              '/companion/voice.js': [companion.voiceScript, 'text/javascript'],
+              '/companion/voice/livekit-client.umd.js': [companion.voiceClient, 'text/javascript'],
+            }
+          : {}),
       };
       const asset = assets[url.pathname];
       if (asset || url.pathname === '/health' || url.pathname === '/') {
@@ -72,10 +86,49 @@ export function startRouter(
           rejectRequest(res, 405, '仅支持 GET');
           return;
         }
-        if (asset) sendText(res, 200, asset[1], asset[0]);
-        else if (url.pathname === '/health')
+        if (asset) {
+          const [payload, type] = asset;
+          if (typeof payload === 'function') payload(request, res);
+          else sendText(res, 200, type, payload);
+        } else if (url.pathname === '/health')
           sendText(res, 200, 'application/json', JSON.stringify(deps.status(boundPort)));
         else sendText(res, 200, 'text/html', deps.landingPage(boundPort));
+        return;
+      }
+      if (companion && url.pathname === '/companion/info') {
+        companion.info(request, res);
+        return;
+      }
+      if (companion && url.pathname === '/companion/settings') {
+        await companion.settings(request, res);
+        return;
+      }
+      if (companion && url.pathname === '/companion/test') {
+        await companion.test(request, res);
+        return;
+      }
+      if (companion && url.pathname === '/companion/runtime') {
+        await companion.runtime(request, res);
+        return;
+      }
+      if (companion && url.pathname === '/companion/voices') {
+        companion.voices(request, res);
+        return;
+      }
+      if (companion && url.pathname === '/companion/voice/preview') {
+        await companion.voicePreview(request, res);
+        return;
+      }
+      if (companion && url.pathname === '/companion/voice/token') {
+        await companion.voiceToken(request, res);
+        return;
+      }
+      if (companion && url.pathname === '/companion/voice/open') {
+        await companion.voiceOpen(request, res);
+        return;
+      }
+      if (companion && url.pathname === '/companion/voice/close') {
+        await companion.voiceClose(request, res);
         return;
       }
       if (url.pathname === '/standalone-ai/settings' || url.pathname === '/standalone-ai/test') {

@@ -82,6 +82,14 @@ export function dshHomeDir(): string {
   return process.env.DSH_HOME || join(userProfile, '.dsh');
 }
 
+/**
+ * 桌宠数据根：默认 `$DSH_HOME/dsh-pet`，可用 `DSH_PET_HOME` 单独覆盖到项目/便携目录。
+ * 不劫持 DSH_HOME，避免把 Electron 缓存与其它插件的数据一起搬走。
+ */
+export function dshPetHome(): string {
+  return process.env.DSH_PET_HOME || join(dshHomeDir(), 'dsh-pet');
+}
+
 // Electron 官方发布包按平台/架构不同：win32 解压出 electron.exe + 散文件，darwin 是 Electron.app
 // （可执行文件在 Contents/MacOS/Electron），linux 是 electron 单文件。
 

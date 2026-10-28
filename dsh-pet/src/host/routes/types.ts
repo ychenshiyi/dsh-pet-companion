@@ -8,6 +8,9 @@
  */
 import type { ChatMemoryMessage } from '../chat.ts';
 import type { ConfigPaths } from '../config.ts';
+import type { EmotionState } from '../plugin/emotion.ts';
+import type { ReminderStore } from '../plugin/reminders.ts';
+import type { UsageStore } from '../plugin/usage.ts';
 import type { RouteResult } from '../http.ts';
 import type { PetImageRef } from '../image-attachment.ts';
 import type { LockStore } from '../lock.ts';
@@ -129,6 +132,18 @@ export interface PetRouteDeps {
     petId: string,
     ts?: readonly number[],
   ) => Promise<{ ok: true; removed: number } | { ok: false; reason: 'unknown-pet'; message: string }>;
+  /** 情感状态（关系/情节/事实）；找不到宠物明确失败。 */
+  readonly getEmotion: (
+    petId: string,
+  ) => Promise<{ ok: true; state: EmotionState; enabled: boolean } | { ok: false; reason: 'unknown-pet'; message: string }>;
+  /** 重置该宠物的情感成长。 */
+  readonly resetEmotion: (
+    petId: string,
+  ) => Promise<{ ok: true; state: EmotionState } | { ok: false; reason: 'unknown-pet'; message: string }>;
+  /** 用量账本。 */
+  readonly usage: UsageStore;
+  /** 提醒/日程。 */
+  readonly reminders: ReminderStore;
   /** 用户动画目录（按扩展名）。 */
   readonly userRootFor: (ext: string) => string;
   /** 包内动画目录（按扩展名）。 */

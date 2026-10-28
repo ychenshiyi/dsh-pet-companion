@@ -52,7 +52,14 @@ export function installDesktopAuth(session: DesktopSession, origin: string, rend
       const target = new URL(details.url);
       const frame = details.frame;
       const page = frame ? new URL(frame.url) : undefined;
+      // 本应用自己的 http 页面（设置中心/隐藏语音窗）访问 /companion/* 与插件路由：允许携带同一令牌。
       if (
+        target.origin === origin &&
+        page?.origin === origin &&
+        (target.pathname.startsWith('/companion/') || target.pathname.startsWith(ROUTE_PATH + '/'))
+      ) {
+        headers['X-DSH-Pet-Token'] = token;
+      } else if (
         target.origin === origin &&
         target.pathname.startsWith(ROUTE_PATH + '/') &&
         frame?.parent === null &&

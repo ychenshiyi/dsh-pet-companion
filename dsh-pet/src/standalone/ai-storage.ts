@@ -48,9 +48,9 @@ function restrictFile(path: string): void {
   );
 }
 
-/** 解析并准备配置目录，拒绝符号链接。 */
-function configPath(home: string): string {
-  const directory = join(home, 'dsh-pet');
+/** 解析并准备配置目录，拒绝符号链接。petDir 可由 DSH_PET_HOME 覆盖。 */
+function configPath(home: string, petDir?: string): string {
+  const directory = petDir ?? join(home, 'dsh-pet');
   if (!existsSync(directory)) mkdirSync(directory, { recursive: true, mode: 0o700 });
   const info = lstatSync(directory);
   if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Unsafe settings directory');
@@ -63,8 +63,8 @@ function configPath(home: string): string {
  * @returns 解析后的未知值；文件不存在时返回 undefined。
  * @throws 路径、大小或权限不安全时抛出。
  */
-export function readAiSettings(home: string): unknown | undefined {
-  const path = configPath(home);
+export function readAiSettings(home: string, petDir?: string): unknown | undefined {
+  const path = configPath(home, petDir);
   if (!existsSync(path)) return undefined;
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_CONFIG_BYTES) throw new Error('Unsafe settings file');
@@ -94,8 +94,8 @@ export function readAiSettings(home: string): unknown | undefined {
  * @param settings - 待持久化的成品配置。
  * @throws 目录或权限不安全时抛出。
  */
-export function writeAiSettings(home: string, settings: unknown): void {
-  writePrivateJson(configPath(home), settings);
+export function writeAiSettings(home: string, settings: unknown, petDir?: string): void {
+  writePrivateJson(configPath(home, petDir), settings);
 }
 
 /**

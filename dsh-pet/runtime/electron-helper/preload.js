@@ -48,6 +48,25 @@ contextBridge.exposeInMainWorld('petBridge', {
   openDshSite(url) {
     ipcRenderer.send('pet:open-site', { url });
   },
+  /** 独立设置窗口（Electron BrowserWindow，不经系统浏览器）。 */
+  openSettings(tab) {
+    ipcRenderer.send('pet:open-settings', { tab: tab || '' });
+  },
+  // 右键菜单「语音对话（常开）」：切换隐藏语音窗与 LiveKit/Agent 进程。
+  toggleVoice() {
+    ipcRenderer.send('pet:voice-toggle');
+  },
+  // 语音开关的真实状态：主进程广播 + 首帧主动查询，菜单右侧用它显示 ✓。
+  onVoiceStatus(cb) {
+    ipcRenderer.on('pet:voice-status', (_e, payload) => cb(payload));
+  },
+  getVoiceStatus() {
+    return ipcRenderer.invoke('pet:voice-status');
+  },
+  /** 气泡快捷回复：由主进程带令牌调用宿主 /chat。 */
+  quickChat(petId, text) {
+    return ipcRenderer.invoke('pet:quick-chat', { petId, text });
+  },
   // 截一帧桌面（宠物所在那块屏）：一次性读取，不建流、不留存。
   // 返回 { mediaType, data, width, height, bytes } 或 null（取不到画面）。
   captureScreen() {

@@ -143,7 +143,13 @@ function registerIpc({ ipcMain, petWindows, shell, openTarget, petRoute }) {
     const authed = process.env.DSH_PET_SITE_URL || '';
     if (/^https?:[/][/]/.test(authed)) {
       try {
-        if (new URL(authed).origin === new URL(url).origin) target = authed;
+        const authedUrl = new URL(authed);
+        const incoming = new URL(url);
+        if (authedUrl.origin === incoming.origin) {
+          // 保留调用方带的选择参数（如 ?tab=voice），令牌仍在 hash 里。
+          incoming.searchParams.forEach((value, key) => authedUrl.searchParams.set(key, value));
+          target = authedUrl.toString();
+        }
       } catch {
         /* 形状不对：保持裸地址（原行为） */
       }

@@ -7,11 +7,12 @@
  */
 
 import { createRequire } from 'node:module';
+import { cpSync, copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { flattenPetList, readAllConfig } from '../host/config.ts';
-import { dshHomeDir } from '../host/helper-process.ts';
+import { dshHomeDir, dshPetHome } from '../host/helper-process.ts';
 import { apply } from '../host/index.ts';
 import { createFileLogger, setDefaultLogger } from '../host/log-file.ts';
 import { createStandaloneAi } from '../standalone/ai-provider.ts';
@@ -20,6 +21,9 @@ import { createStandaloneContext, type RegisteredRoute } from '../standalone/con
 import { configPathsFor } from '../standalone/options.ts';
 import { createRequestSecurity } from '../standalone/request-security.ts';
 
+import { createCompanionStore } from './companion/config.ts';
+import { createCompanionHandlers } from './companion/routes.ts';
+import { VoiceSupervisor } from './companion/supervisor.ts';
 import { installDesktopAuth, type DesktopSession } from './desktop-auth.ts';
 import { startRouter } from './router.ts';
 import { ROUTE_PATH } from '../shared/constants.ts';
@@ -41,11 +45,30 @@ interface ElectronApp {
   on(event: 'web-contents-created', listener: (event: unknown, contents: WebContentsLike) => void): void;
   on(event: 'second-instance', listener: () => void): void;
   on(event: 'will-quit', listener: () => void): void;
+  commandLine: { appendSwitch(name: string, value?: string): void };
 }
-const { app, session } = createRequire(import.meta.url)('electron') as {
+interface VoiceWindow {
+  loadURL(url: string): Promise<void>;
+  on(event: 'closed', listener: () => void): void;
+  close(): void;
+  isDestroyed(): boolean;
+  show?(): void;
+  focus?(): void;
+  webContents: {
+    executeJavaScript(code: string): Promise<unknown>;
+    send(channel: string, payload: unknown): void;
+  };
+}
+const electron = createRequire(import.meta.url)('electron') as {
   app: ElectronApp;
-  session: { defaultSession: DesktopSession };
+  session: { defaultSession: DesktopSession & { setPermissionRequestHandler?: (handler: unknown) => void } };
+  BrowserWindow: (new (options: Record<string, unknown>) => VoiceWindow) & { getAllWindows(): VoiceWindow[] };
+  ipcMain: {
+    on(event: string, listener: (...args: unknown[]) => void): void;
+    handle(event: string, listener: (...args: unknown[]) => unknown): void;
+  };
 };
+const { app, session, BrowserWindow, ipcMain } = electron;
 
 /** 包根目录：与 helper-process.ts 的 packageRoot 同一口径（模块所在目录的上一级） */
 const here = dirname(fileURLToPath(import.meta.url));
@@ -53,6 +76,23 @@ const packageRoot = resolve(here, '..');
 const helperMain = join(packageRoot, 'runtime', 'electron-helper', 'main.js');
 
 const log = (message: string): void => console.log(`[dsh-pet-app] ${message}`);
+
+/**
+ * 首次使用 DSH_PET_HOME 指向新目录时，从旧 `$DSH_HOME/dsh-pet` 复制一份配置与素材。
+ * 只复制、不移动，旧 DSH 仍可继续使用原数据。
+ */
+function ensurePetHome(petHome: string): void {
+  const legacy = join(dshHomeDir(), 'dsh-pet');
+  if (resolve(petHome) === resolve(legacy)) return;
+  if (existsSync(join(petHome, 'main-config.jsonc'))) return;
+  if (!existsSync(legacy)) return;
+  mkdirSync(petHome, { recursive: true });
+  for (const name of ['main-config.jsonc', 'main-config.json', 'memory.json', 'main-animation', 'memes', 'pet']) {
+    const source = join(legacy, name);
+    if (existsSync(source)) cpSync(source, join(petHome, name), { recursive: true });
+  }
+  log(`已从旧数据目录复制配置到 ${petHome}`);
+}
 
 /** 单实例：第二次双击直接退出（共用 userData 的 Chromium profile 会互踢） */
 const locked = app.requestSingleInstanceLock();
@@ -69,10 +109,15 @@ if (!locked) {
  * 而 Helper 又必须在 ready 之前被 require（内部有 `app.commandLine.appendSwitch`，ready 后再加不生效）。
  */
 async function boot(): Promise<void> {
+  app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
   // 独立应用没有控制台：插件日志、standalone 日志与同进程 Helper/渲染端的 console 全部落盘。
   // 原始 console 方法要先快照——包装后的 console 会转给文件 logger，logger 的 base 必须指向原始方法，
   // 否则 logger → console → logger 无限递归。
-  const logFile = join(dshHomeDir(), 'dsh-pet', 'logs.txt');
+  // 桌宠数据根：默认 $DSH_HOME/dsh-pet，可用 DSH_PET_HOME 指到项目/便携目录
+  const petHome = dshPetHome();
+  ensurePetHome(petHome);
+
+  const logFile = join(petHome, 'logs.txt');
   const rawConsole = {
     log: console.log.bind(console),
     info: console.info.bind(console),
@@ -104,7 +149,66 @@ async function boot(): Promise<void> {
 
   // 与 CLI 同一套安全模型：令牌只经「配置页地址的 #token=」递给浏览器，不进日志
   const security = createRequestSecurity();
-  const ai = createStandaloneAi(dshHomeDir(), logger);
+  const ai = createStandaloneAi(dshHomeDir(), logger, {}, petHome);
+  const companionStore = createCompanionStore(petHome);
+  // 文本与语音共用同一份 memory.json；路径来自设置页的 chat.memoryDir，首次自动迁移旧文件。
+  const memoryFile = join(companionStore.current().chat.memoryDir, 'memory.json');
+  const legacyMemory = join(petHome, 'memory.json');
+  if (memoryFile !== legacyMemory && !existsSync(memoryFile) && existsSync(legacyMemory)) {
+    mkdirSync(dirname(memoryFile), { recursive: true });
+    copyFileSync(legacyMemory, memoryFile);
+    log(`已把对话记忆迁移到 ${memoryFile}`);
+  }
+  process.env.DSH_PET_MEMORY_FILE = memoryFile;
+  process.env.DSH_PET_EMOTION_FILE = join(dirname(memoryFile), 'emotion.json');
+  process.env.DSH_PET_EMOTION_ENABLED = companionStore.current().emotion.enabled ? '1' : '0';
+  process.env.DSH_PET_USAGE_FILE = join(dirname(memoryFile), 'usage.jsonl');
+  process.env.DSH_PET_REMINDER_FILE = join(dirname(memoryFile), 'reminders.json');
+  // 语音开关状态（主进程唯一真源；变化时广播给所有桌宠窗，菜单右侧 ✓ 用它）
+  let voiceWindow: VoiceWindow | undefined;
+  let voiceOn = false;
+  const broadcastVoice = (): void => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      try {
+        if (!win.isDestroyed()) win.webContents.send('pet:voice-status', { on: voiceOn });
+      } catch {
+        /* 窗口正在销毁 */
+      }
+    }
+  };
+  const supervisor = new VoiceSupervisor(companionStore, log, () => {
+    if (!voiceOn) return;
+    voiceOn = false;
+    if (voiceWindow && !voiceWindow.isDestroyed()) voiceWindow.close();
+    voiceWindow = undefined;
+    broadcastVoice();
+  });
+  // 语音开关的真实实现在 server 就绪后绑定（路由需要先注册）。
+  let openVoiceImpl: () => Promise<void> = async () => {};
+  let closeVoiceImpl: () => Promise<void> = async () => {};
+  let stopVoiceImpl: () => Promise<void> = async () => {};
+  const companionHandlers = createCompanionHandlers({
+    store: companionStore,
+    ai,
+    supervisor,
+    voiceDir: join(packageRoot, 'runtime', 'voice'),
+    openVoice: () => openVoiceImpl(),
+    closeVoice: () => closeVoiceImpl(),
+    stopVoice: () => stopVoiceImpl(),
+    runtime: {
+      python: process.env.DSH_PET_PYTHON,
+      agentRoot: process.env.DSH_PET_AGENT_ROOT,
+      meloDir: join(process.env.DSH_PET_AGENT_ROOT ?? packageRoot, 'models', 'melo-tts'),
+    },
+    info: () => {
+      const current = status(port) as { version?: string; pets?: Array<{ id: string; name: string; display: string }> };
+      return {
+        version: String(current.version ?? packageVersion(packageRoot)),
+        port,
+        pets: (current.pets ?? []).map((pet) => ({ id: pet.id, name: pet.name, display: pet.display })),
+      };
+    },
+  });
   const context = createStandaloneContext({
     port: () => port,
     logger,
@@ -113,10 +217,125 @@ async function boot(): Promise<void> {
     authenticatedUrl: security.authenticatedUrl,
   });
 
-  const server = await startRouter(routes, { security, ai, log, status, landingPage });
+  const server = await startRouter(routes, {
+    security,
+    ai,
+    companion: companionHandlers,
+    log,
+    status,
+    landingPage,
+  });
   port = server.port;
   const origin = `http://127.0.0.1:${port}`;
   log(`本机服务 ${origin}`);
+
+  // 隐藏语音窗：麦克风/音频都在这里，桌宠窗只负责显示。
+  let settingsWindow: VoiceWindow | undefined;
+  const openSettingsWindow = async (tab = ''): Promise<void> => {
+    const base = security.authenticatedUrl(origin, '/companion/');
+    const url = tab ? base.replace('#', `?tab=${encodeURIComponent(tab)}#`) : base;
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      await settingsWindow.loadURL(url);
+      settingsWindow.show?.();
+      settingsWindow.focus?.();
+      return;
+    }
+    settingsWindow = new BrowserWindow({
+      width: 1060,
+      height: 840,
+      minWidth: 820,
+      minHeight: 600,
+      title: '桌宠设置',
+      show: false,
+      autoHideMenuBar: true,
+      webPreferences: { contextIsolation: true, backgroundThrottling: false },
+    });
+    settingsWindow.on('closed', () => {
+      settingsWindow = undefined;
+    });
+    await settingsWindow.loadURL(url);
+    settingsWindow.show?.();
+    settingsWindow.focus?.();
+  };
+  ipcMain.on('pet:open-settings', (_event, payload) => {
+    const tab =
+      payload && typeof payload === 'object' && typeof (payload as { tab?: unknown }).tab === 'string'
+        ? String((payload as { tab: string }).tab)
+        : '';
+    void openSettingsWindow(tab);
+  });
+  const openVoice = async (): Promise<void> => {
+    if (voiceOn) return;
+    const status = await supervisor.ensureStarted();
+    if (!status.running) {
+      log(`语音启动失败：${status.error ?? status.phase}`);
+      voiceOn = false;
+      broadcastVoice();
+      return;
+    }
+    const voiceSettings = companionStore.current().voice;
+    const url = `${origin}/companion/voice/#token=${encodeURIComponent(security.token)}&room=${encodeURIComponent(status.room)}&wake=${encodeURIComponent(voiceSettings.wakeWord)}&idle=${voiceSettings.wakeIdleSeconds}`;
+    voiceWindow = new BrowserWindow({
+      show: false,
+      width: 2,
+      height: 2,
+      webPreferences: { contextIsolation: true, backgroundThrottling: false },
+    });
+    voiceWindow.on('closed', () => {
+      voiceOn = false;
+      voiceWindow = undefined;
+      void supervisor.stop();
+      broadcastVoice();
+    });
+    await voiceWindow.loadURL(url);
+    voiceOn = true;
+    broadcastVoice();
+    log('语音对话已开启（常开）');
+    setTimeout(() => {
+      const win = voiceWindow;
+      if (!win || win.isDestroyed()) return;
+      void win.webContents
+        .executeJavaScript('({ state: window.__voiceState ? window.__voiceState() : null, hashLength: location.hash.length })')
+        .then((state) => log('语音窗状态 ' + JSON.stringify(state)))
+        .catch((error: unknown) => log('语音窗状态读取失败 ' + (error instanceof Error ? error.message : String(error))));
+    }, 8000);
+  };
+  const closeVoice = async (): Promise<void> => {
+    voiceOn = false;
+    if (voiceWindow && !voiceWindow.isDestroyed()) voiceWindow.close();
+    voiceWindow = undefined;
+    await supervisor.stop();
+    broadcastVoice();
+    log('语音对话已关闭');
+  };
+  const toggleVoice = async (): Promise<void> => {
+    if (voiceOn) await closeVoice();
+    else await openVoice();
+  };
+  openVoiceImpl = toggleVoice;
+  closeVoiceImpl = closeVoice;
+  stopVoiceImpl = closeVoice;
+  ipcMain.handle('pet:voice-status', () => ({ on: voiceOn }));
+  ipcMain.handle('pet:quick-chat', async (_event, payload) => {
+    const data = payload && typeof payload === 'object' ? (payload as { petId?: unknown; text?: unknown }) : {};
+    const petId = String(data.petId ?? '').trim();
+    const text = String(data.text ?? '').trim();
+    if (!petId || !text) return { ok: false, error: '缺少宠物或文本' };
+    try {
+      const res = await fetch(
+        `${origin}${ROUTE_PATH}/chat?pet=${encodeURIComponent(petId)}&surface=desktop`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-DSH-Pet-Token': security.token },
+          body: JSON.stringify({ text }),
+        },
+      );
+      return await res.json();
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.on('pet:voice-toggle', () => void toggleVoice());
 
   // 先把「我自己就是应用」告诉插件，再 apply：apply 内部据此短路 spawn 与下载
   process.env.DSH_PET_IN_PROCESS = '1';
@@ -125,8 +344,8 @@ async function boot(): Promise<void> {
   // 不注入宿主 PID：helper 的「宿主没了就退出」只对双进程有意义，同进程里设了会自己杀自己
   delete process.env.DSH_PET_HOST_PID;
   process.env.DSH_PET_CONFIG_URL = `${origin}${ROUTE_PATH}/config`;
-  // 右键「打开网站」用它：带令牌的配置页（与 CLI 行为一致）。裸 origin 在应用里没有页面可看。
-  process.env.DSH_PET_SITE_URL = security.authenticatedUrl(origin);
+  // 右键「打开网站」用它：带令牌的设置中心（与 CLI 行为一致）。裸 origin 在应用里没有页面可看。
+  process.env.DSH_PET_SITE_URL = security.authenticatedUrl(origin, '/companion/');
   if (!process.env.DSH_PET_SCALE) process.env.DSH_PET_SCALE = '1';
 
   apply(context.ctx);
@@ -144,6 +363,12 @@ async function boot(): Promise<void> {
   });
   // 必须早于 Helper 的 whenReady 回调建出 file 渲染页。
   void app.whenReady().then(() => {
+    // 语音窗需要麦克风；本机应用只放行媒体类权限。
+    session.defaultSession.setPermissionRequestHandler?.(
+      (_wc: unknown, permission: string, callback: (granted: boolean) => void) => {
+        callback(permission === 'media' || permission === 'audioCapture' || permission === 'videoCapture');
+      },
+    );
     installDesktopAuth(
       session.defaultSession,
       origin,
@@ -160,6 +385,7 @@ async function boot(): Promise<void> {
 
   app.on('second-instance', () => log('已有一个实例在运行，忽略本次启动'));
   app.on('will-quit', () => {
+    void supervisor.stop();
     // 退出前把最后一批日志刷出去（定时器最多 1s，这里显式补一次）
     void logger.flush();
     logger.dispose();
@@ -175,7 +401,7 @@ async function boot(): Promise<void> {
  */
 function desktopPets(): Array<{ id: string; size: number }> {
   try {
-    const pets = flattenPetList(readAllConfig(configPathsFor(packageRoot, dshHomeDir())));
+    const pets = flattenPetList(readAllConfig(configPathsFor(packageRoot, dshHomeDir(), dshPetHome())));
     const desktop = pets
       .filter((pet) => pet.display === 'desktop' || pet.display === 'both')
       .map((pet) => ({ id: String(pet.id), size: Number(pet.size) }));
@@ -189,7 +415,7 @@ function desktopPets(): Array<{ id: string; size: number }> {
 
 /** 状态接口与落地页共用的数据源；配置读不出来时如实显示 0 只，不让页面 500。 */
 function status(port: number): Record<string, unknown> {
-  const paths = configPathsFor(packageRoot, dshHomeDir());
+  const paths = configPathsFor(packageRoot, dshHomeDir(), dshPetHome());
   let pets: Array<Record<string, unknown>> = [];
   try {
     pets = flattenPetList(readAllConfig(paths));

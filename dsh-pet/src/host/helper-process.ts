@@ -10,6 +10,7 @@ export {
   defaultHelperMain,
   defaultLaunch,
   dshHomeDir,
+  dshPetHome,
   electronLandingDir,
   ensureElectronDownload,
   hasGraphicalDisplay,

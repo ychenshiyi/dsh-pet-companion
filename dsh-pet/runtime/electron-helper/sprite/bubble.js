@@ -78,7 +78,7 @@ Object.assign(PetSprite.prototype, {
     const isCustom = !!(this.balanceState && S.customViews(this.balanceState));
     const clickable = slot === 'balance' && this.balanceClickable();
     const expanded = clickable && !isCustom && this.balanceViewIndex > 0;
-    this.bubble.classList.toggle('is-clickable', clickable);
+    this.bubble.classList.toggle('is-clickable', clickable || slot === 'whisper');
     this.bubble.classList.toggle('is-expanded', expanded);
     if (slot === 'none') {
       // 三者都没有可显示的内容：隐藏（不占位，也就不会挡住任何一层）
@@ -100,6 +100,29 @@ Object.assign(PetSprite.prototype, {
       line.className = 'pet-bub-row';
       line.textContent = this.whisperView[0]?.text ?? '';
       this.bubble.appendChild(line);
+      // 气泡快捷回复：继续 / 换话题 / 记下来；主进程带令牌调 /chat，回复仍从 say 叶子回来。
+      const actions = document.createElement('div');
+      actions.style.cssText = 'display:flex;gap:6px;margin-top:8px;flex-wrap:wrap';
+      for (const [label, prompt] of [
+        ['继续', '继续刚才的话题'],
+        ['换个话题', '换个话题吧'],
+        ['记下来', '把刚才聊到的记下来'],
+      ]) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = label;
+        button.style.cssText =
+          'border:1px solid rgba(91,107,122,.35);background:rgba(255,255,255,.7);border-radius:10px;padding:2px 8px;font:inherit;font-size:11px;color:#3b4a5a;cursor:pointer';
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (window.petBridge && typeof window.petBridge.quickChat === 'function') {
+            void window.petBridge.quickChat(this.pet.id, prompt);
+          }
+        });
+        actions.appendChild(button);
+      }
+      this.bubble.appendChild(actions);
     } else if (this.balanceState && S.customViews(this.balanceState)) {
       // custom 形态：第三方自己的节点树。页索引取当前页；页数变少时夹到最后一页，不显示残页。
       const views = S.customViews(this.balanceState);

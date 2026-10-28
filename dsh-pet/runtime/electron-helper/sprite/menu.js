@@ -18,21 +18,20 @@ Object.assign(PetSprite.prototype, {
     // 不受 whisperEnabled 限制（该字段只影响自动轮询）。首项文案随宿主形态变：桌面宿主说「打开软件」。
     const tools = [
       {
-        label: OPEN_TARGET === 'desktop' ? '打开软件' : '打开网站',
+        label: '打开设置',
         action: 'open-site',
         hint: OPEN_SHORTCUT_HINT,
       },
     ];
     // 「查看余额」无条件显示：关了 balanceEnabled 的宠物也能点，手动请求不受开关限制，点了一定给答复。
     tools.push({ label: '查看余额', action: 'show-balance' });
+    if (typeof window.__voiceOn !== 'boolean') window.__voiceOn = false;
     tools.push(
       { label: '碎碎念', action: 'whisper' },
       { label: '对话', action: 'chat', hint: S.CHAT_HOTKEY_HINT },
+      { label: '情感 / 心情…', action: 'emotion-settings' },
+      { label: '语音对话（常开）', action: 'voice-toggle', hint: window.__voiceOn ? '✓' : '' },
       { label: '回到初始位置', action: 'home' },
-      // 显示位置（仅网页/仅桌面/两者/都不）：改这只宠物的 display 配置，由宿主重载生效。
-      // 与浏览器端注入同一份子菜单，两端文案与取值不会漂移。不就地开关窗：窗口是进程启动时按
-      // DSH_PET_PETS 一次性建的，就地增删既改不了磁盘配置也改不了窗口数量。
-      S.displayMenuBranch(),
       // 重载配置：请宿主重启桌面 Helper，全部窗口按最新配置重建。放在最后——它是维护动作。
       { label: '重载配置', action: 'reload' },
     );
@@ -79,7 +78,7 @@ Object.assign(PetSprite.prototype, {
       return;
     }
     if (leaf.action === 'open-site') {
-      if (window.petBridge) window.petBridge.openDshSite(ORIGIN); // 系统默认浏览器打开（等效 Ctrl+点击链接）
+      if (window.petBridge) window.petBridge.openSettings('');
       return;
     }
     if (leaf.action === 'show-balance') {
@@ -92,6 +91,15 @@ Object.assign(PetSprite.prototype, {
     }
     if (leaf.action === 'chat') {
       this.showChatFromMenu(); // 打开对话弹窗（记忆经 host /chat 读写，浏览器/桌面同一实例共享）
+      return;
+    }
+    if (leaf.action === 'emotion-settings') {
+      if (window.petBridge) window.petBridge.openSettings('emotion');
+      return;
+    }
+    if (leaf.action === 'voice-toggle') {
+      window.__voiceOn = !window.__voiceOn; // 乐观翻转；主进程广播回来会校正真实状态
+      if (window.petBridge) window.petBridge.toggleVoice(); // 切换常开语音（隐藏语音窗 + LiveKit/Agent）
       return;
     }
     if (leaf.action === 'home') {

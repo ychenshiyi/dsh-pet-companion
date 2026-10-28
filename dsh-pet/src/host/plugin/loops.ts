@@ -6,6 +6,8 @@
  */
 import { findPetInstance, flattenPetList, readAllConfig } from '../config.ts';
 import { automaticWhisperSchedule } from '../whisper-policy.ts';
+import { isQuietNow, readRuntimePolicy } from './policy.ts';
+import type { ReminderStore } from './reminders.ts';
 import type { BalancePoll } from './balance-poll.ts';
 import type { ChatMemory } from './chat-memory.ts';
 import type { PetLookup } from './pet-lookup.ts';
@@ -24,7 +26,12 @@ export type LoopsInput = {
   Pick<ChatMemory, 'publishWhisper'> &
   Pick<BalancePoll, 'refreshBalance'> &
   Pick<HostSetup, 'standaloneAiPolicy'> &
-  Pick<BalancePoll, 'whisperPeriodSec'>;
+  Pick<BalancePoll, 'whisperPeriodSec'> &
+  Pick<HostSetup, 'userRoot'> &
+  Pick<HostSetup, 'state'> & {
+    /** 提醒存储（到点写气泡）。 */
+    reminders: ReminderStore;
+  };
 
 /** 注册轮询循环；返回的清理函数由 ctx.effect 收集。 */
 export function registerLoops(deps: LoopsInput): void {
@@ -39,6 +46,9 @@ export function registerLoops(deps: LoopsInput): void {
     refreshBalance,
     standaloneAiPolicy,
     whisperPeriodSec,
+    reminders,
+    userRoot,
+    state,
   } = deps;
   // 余额周期刷新：host 侧唯一定时器。周期每次重新读配置 eventsRefreshSec.balance，改了下一拍跟上。
   // 没有任何启用余额的宠物时跳过查询：尊重配置，不白花外部 API 调用。
@@ -82,6 +92,9 @@ export function registerLoops(deps: LoopsInput): void {
   ctx.effect(() => {
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let proactiveDay = '';
+    let proactiveCount = 0;
+    let lastProactiveAt = 0;
     function arm(sec: number): void {
       if (disposed) return;
       timer = setTimeout(() => void tick(), Math.max(1000, sec * 1000));
@@ -91,6 +104,12 @@ export function registerLoops(deps: LoopsInput): void {
       try {
         const cfg = readAllConfig(configPaths);
         const now = Date.now();
+        const policy = readRuntimePolicy(userRoot);
+        const today = new Date(now).toISOString().slice(0, 10);
+        if (proactiveDay !== today) {
+          proactiveDay = today;
+          proactiveCount = 0;
+        }
         let min = Infinity;
         // 每一拍的账：检查几只、到点几只、没到点几只、跳过几只（带原因）。只用于日志，调度行为不变。
         let checked = 0;
@@ -119,6 +138,27 @@ export function registerLoops(deps: LoopsInput): void {
           }
           const sec = schedule.periodSec;
           min = Math.min(min, sec);
+          // 主动关心的硬闸门：专注模式 / 未开启 / 安静时段 / 每日上限 / 最小间隔
+          if (policy.focus.enabled) {
+            skipped.push(petId + ': 专注模式');
+            continue;
+          }
+          if (!policy.proactive.enabled) {
+            skipped.push(petId + ': 主动关心未开启');
+            continue;
+          }
+          if (isQuietNow(new Date(now), policy.proactive.quietStart, policy.proactive.quietEnd)) {
+            skipped.push(petId + ': 安静时段');
+            continue;
+          }
+          if (policy.proactive.dailyLimit > 0 && proactiveCount >= policy.proactive.dailyLimit) {
+            skipped.push(petId + ': 每日主动上限');
+            continue;
+          }
+          if (lastProactiveAt > 0 && now - lastProactiveAt < policy.proactive.minIntervalMinutes * 60_000) {
+            skipped.push(petId + ': 最小间隔');
+            continue;
+          }
           if (now - (lastWhisperAt.get(petId) ?? 0) < sec * 1000) {
             notDue += 1;
             continue;
@@ -132,6 +172,8 @@ export function registerLoops(deps: LoopsInput): void {
             continue;
           }
           due += 1;
+          proactiveCount += 1;
+          lastProactiveAt = now;
           log.info(`[dsh-pet] 碎碎念到点 pet=${petId}（周期 ${sec}s），开始生成`);
           lastWhisperAt.set(petId, now);
           // 不 await：生成要几秒，别把调度拍拖住（每只宠物独立生成，互不阻塞）
@@ -161,4 +203,28 @@ export function registerLoops(deps: LoopsInput): void {
       if (timer !== null) clearTimeout(timer);
     };
   }, 'dsh-pet: whisper poll');
+
+  // 提醒/日程：15 秒一拍，到点写气泡并移除；不依赖模型，断网也能响。
+  ctx.effect(() => {
+    let disposed = false;
+    async function tick(): Promise<void> {
+      try {
+        const due = await reminders.takeDue(Date.now());
+        for (const item of due) {
+          state.writePet(item.petId, 'say', { text: '⏰ ' + item.text, duration: 60_000, anim: false });
+          log.info(`[dsh-pet] 提醒到点 pet=${item.petId}：${item.text}`);
+        }
+      } catch (e) {
+        log.warn('[dsh-pet] 提醒检查失败：' + (e instanceof Error ? e.message : String(e)));
+      }
+    }
+    void tick();
+    const timer = setInterval(() => {
+      if (!disposed) void tick();
+    }, 15_000);
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+    };
+  }, 'dsh-pet: reminders');
 }

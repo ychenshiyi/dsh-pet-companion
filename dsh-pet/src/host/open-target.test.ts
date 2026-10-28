@@ -80,14 +80,14 @@ describe('「打开网站」按宿主形态自动分派', () => {
     );
   });
 
-  test('helper 渲染端：文案随形态变，动作名不变', () => {
+  test('helper 渲染端：设置统一为独立窗口，动作名不变', () => {
     assert.ok(
       /const OPEN_TARGET = params\.get\('openTarget'\) === 'desktop' \? 'desktop' : 'site'/.test(constants),
       "constants.js 必须从 query 读形态且默认 'site'",
     );
     assert.ok(
-      /label: OPEN_TARGET === 'desktop' \? '打开软件' : '打开网站',\s*action: 'open-site'/.test(sprite),
-      '菜单文案要跟着变，但 action 仍是 open-site（另一端只认这个动作名；hint 只是视觉提示，允许夹在中间换行）',
+      /label: '打开设置',\s*action: 'open-site'/.test(sprite),
+      '菜单统一叫「打开设置」，但 action 仍是 open-site（设置窗口由主进程打开，不再分桌面/站点）',
     );
   });
 
