@@ -1,0 +1,89 @@
+# ============================================================================
+# 日常 CI：把「能在本地跑绿的检查」搬到每次 push / PR 上
+#
+# 分两个互相独立的 job：
+#   node   —— 桌宠主体（TypeScript）：类型检查 + 1519 个单测 + ESLint
+#   python —— 语音 Agent：ruff（lint + format）+ pytest
+#
+# 语音 job 只装 pytest/ruff，不装 livekit-agents 那套重依赖：
+#   被测模块（text_split / wake_gate / prosody / emotion）是纯逻辑，
+#   这样 CI 45 秒内能出结果，也不会被 ONNX Runtime 的下载拖死。
+#
+# 发版不在这里：见 release-app.yml（push tag v* 触发）。
+# ============================================================================
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    name: 桌宠主体（typecheck + test + lint）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dsh-pet
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: dsh-pet/pnpm-lock.yaml
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 类型检查
+        run: pnpm run typecheck
+
+      - name: 单元测试
+        run: pnpm test
+
+      - name: ESLint
+        run: pnpm run lint
+
+      - name: 格式检查
+        run: pnpm run format:check
+
+  python:
+    name: 语音 Agent（ruff + pytest）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: voice
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安装测试工具
+        run: pip install --upgrade pip pytest ruff
+
+      - name: 代码风格
+        run: ruff format --check .
+
+      - name: 静态检查
+        run: ruff check .
+
+      - name: 单元测试
+        run: pytest -q

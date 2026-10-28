@@ -24,6 +24,59 @@ AI 生成动画的配方     源视频 → 透明动画的管线    运行在 DS
 
 任何人 clone 本仓库，都可以**从零生成自己的桌面宠物**——换角色、换动作、换风格，全流程可复现。
 
+> **分支说明**：本仓库基于 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)（MIT），
+> 在此基础上加了「桌面伴侣」一层：独立应用、语音对话、情感养成。上游的素材链与插件能力**原样保留**，
+> 只想装原版插件的话，直接用上游仓库或 `dsh plugin add dsh-pet` 即可。
+
+---
+
+## 🎙 伴侣模式（本分支新增）
+
+| 能力 | 说明 |
+| --- | --- |
+| **独立桌面应用** | 不装 DSH 也能双击运行（`dsh-pet\scripts\app.cmd`），自带设置中心 `/companion/` |
+| **语音对话** | 本机 LiveKit + Python Agent：SenseVoice 本地 STT、Edge / MeloTTS 双 TTS、唤醒词、可随时打断、常开模式 |
+| **情感养成** | 好感 / 信任 / 熟悉 / 精力 + 情节与事实记忆，影响称呼、动画选择与语音韵律；状态可见、可重置 |
+| **陪伴功能** | 用量与费用面板、主动关心（默认关）、专注模式、提醒日程、回忆录导出、气泡快捷回复 |
+
+<p align="center">
+  <img src="assets/screenshots/companion/settings-center.png" width="46%" alt="设置中心">
+  <img src="assets/screenshots/companion/voice-panel.png" width="46%" alt="语音设置">
+</p>
+<p align="center">
+  <img src="assets/screenshots/companion/emotion-panel.png" width="46%" alt="情感面板">
+  <img src="assets/screenshots/companion/pet-companion-running.png" width="46%" alt="运行中的桌宠">
+</p>
+
+**文档**
+
+- 使用说明（启动、右键菜单、语音、情感、设置、故障排查）→ [`dsh-pet/docs/USAGE.md`](dsh-pet/docs/USAGE.md)
+- 架构与路线（为什么用 LiveKit、Python sidecar、记忆与情感设计）→ [`dsh-pet/docs/TECHNICAL-ROUTE.md`](dsh-pet/docs/TECHNICAL-ROUTE.md)
+- 语音 Agent 与本地 LiveKit 环境 → [`voice/README.md`](voice/README.md)
+- 实施计划（决策记录、阶段、验收清单）→ [`PLAN-companion-voice.md`](PLAN-companion-voice.md)
+
+### 跑起来（Windows）
+
+```bat
+git clone https://github.com/<你的账号>/dsh-pet-companion.git
+cd dsh-pet-companion
+
+:: ① 桌宠主体
+cd dsh-pet
+pnpm install
+pnpm run bundle
+pnpm run ensure:electron
+cd ..
+
+:: ② 语音栈：LiveKit 服务端 + 离线模型 + venv（约 1.2GB，可重复执行）
+pwsh -File voice\scripts\bootstrap.ps1
+
+:: ③ 启动（数据默认落在 %USERPROFILE%\.dsh\dsh-pet）
+dsh-pet\scripts\app.cmd
+```
+
+只想先看语音：`voice\scripts\dev.cmd`，浏览器打开 <http://127.0.0.1:7890> 直接说话。
+
 ---
 
 ## 快速开始（安装插件）
