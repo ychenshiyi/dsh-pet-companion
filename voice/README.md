@@ -150,7 +150,7 @@ CI（`.github/workflows/ci.yml`）只装 `pytest` + `ruff`，不装 `livekit-age
 | 有转写但没声音 | 检查 Edge TTS 网络（`python -m agent.smoke_test`）；TTS 失败会写在 `logs/agent.out.log` |
 | 说完半天才回 | Edge TTS 在网络差时单句要 2s+；可把 `EDGE_TTS_RATE` 调快，或后续换本地 TTS |
 | `start` 报 7880 占用 | `scripts\stop.cmd`，或改 `livekit.yaml` 端口 |
-| 跨机加入失败 | `nodeIP` 是本机某块网卡（本环境是 Hyper-V 的 192.168.208.1），跨机时在 `livekit.yaml` 设 `rtc.node_ip` 为真实 LAN IP |
+| 跨机加入失败 | `nodeIP` 取的是本机某块网卡（Hyper-V/WSL 的虚拟网卡常被选中）；跨机时在 `livekit.yaml` 把 `rtc.node_ip` 显式设成真实 LAN IP |
 | venv 里 import 崩溃 | 不要用 Anaconda 3.11 建 venv；改用 Python 3.12 重建 |
 
 ## 安全与边界

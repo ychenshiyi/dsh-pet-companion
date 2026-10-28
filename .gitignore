@@ -52,6 +52,11 @@ dsh-pet/dist-app/
 Thumbs.db
 desktop.ini
 
+# ── 本地运行截图（含真实对话、宠物名、桌面，不得入库）──
+#   要公开截图，先脱敏成独立文件并评审，再 git add -f
+assets/screenshots/companion/
+*.local.png
+
 # ══════════════════════════════════════════════════════════════════
 # 语音栈（voice/）：只入库源码与脚本，运行时产物一律本地生成
 #   重建：scripts\bootstrap.ps1（下载模型/二进制 + 建 venv + 校验）

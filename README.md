@@ -40,12 +40,7 @@ AI 生成动画的配方     源视频 → 透明动画的管线    运行在 DS
 | **陪伴功能** | 用量与费用面板、主动关心（默认关）、专注模式、提醒日程、回忆录导出、气泡快捷回复 |
 
 <p align="center">
-  <img src="assets/screenshots/companion/settings-center.png" width="46%" alt="设置中心">
-  <img src="assets/screenshots/companion/voice-panel.png" width="46%" alt="语音设置">
-</p>
-<p align="center">
-  <img src="assets/screenshots/companion/emotion-panel.png" width="46%" alt="情感面板">
-  <img src="assets/screenshots/companion/pet-companion-running.png" width="46%" alt="运行中的桌宠">
+  <em>截图暂不随仓库分发：界面截图都来自真实运行实例，含个人对话与宠物名，故不入库。想看效果请本地启动（见下）。</em>
 </p>
 
 **文档**
