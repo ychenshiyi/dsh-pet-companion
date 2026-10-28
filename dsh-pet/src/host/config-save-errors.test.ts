@@ -41,7 +41,8 @@ after(async () => {
   await server?.close();
   if (previousHome === undefined) delete process.env.DSH_HOME;
   else process.env.DSH_HOME = previousHome;
-  rmSync(home, { recursive: true, force: true });
+  // Linux CI 上偶发 ENOTEMPTY：窗口内可能还有临时文件刚落盘，给 rm 留重试余地
+  rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 });
 
 async function put(body: string, query = '') {
