@@ -1,80 +1,293 @@
-# dsh-pet 🐾
+# dsh-pet 伴侣版 🐾
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/dsh-pet"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-pet?label=npm&color=blue"></a>
-  <a href="https://www.npmjs.com/package/dsh-pet"><img alt="npm monthly downloads" src="https://img.shields.io/npm/dm/dsh-pet?label=%E6%9C%88%E4%B8%8B%E8%BD%BD&color=brightgreen"></a>
-  <a href="https://www.npmjs.com/package/dsh-pet"><img alt="total downloads" src="https://img.shields.io/npm/dt/dsh-pet?label=%E6%80%BB%E4%B8%8B%E8%BD%BD&color=success"></a>
-  <a href="https://github.com/PC2005-cloud/dsh-pet"><img alt="stars" src="https://img.shields.io/github/stars/PC2005-cloud/dsh-pet?style=social"></a>
-  <a href="https://github.com/PC2005-cloud/dsh-pet/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/github/license/PC2005-cloud/dsh-pet?color=orange"></a>
-  <a href="https://awesome-dsh-plugin.com"><img alt="awesome dsh plugin" src="https://awesome-dsh-plugin.com/badge.svg"></a>
-  <a href="https://github.com/PC2005-cloud/dsh-pet"><img alt="repo size" src="https://img.shields.io/github/repo-size/PC2005-cloud/dsh-pet"></a>
-  <a href="https://github.com/PC2005-cloud/dsh-pet/issues"><img alt="issues" src="https://img.shields.io/github/issues/PC2005-cloud/dsh-pet"></a>
-  <img alt="platform" src="https://img.shields.io/badge/platform-DeepSeek%20Harness%20Web-8A2BE2">
-  <img alt="assets" src="https://img.shields.io/badge/assets-dynamic%20animations-ff69b4">
+  <img alt="license" src="https://img.shields.io/badge/license-MIT-orange">
+  <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20x64-0078D6">
+  <img alt="node" src="https://img.shields.io/badge/node-24-339933">
+  <img alt="python" src="https://img.shields.io/badge/python-3.12-3776AB">
 </p>
 
-一只住在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 里的桌面宠物：待机呼吸、随机动作（打瞌睡、玩魔方、吃火锅……）、左右转向、屏幕漫游、点击 Q 弹、拖拽甩抛反弹、右键菜单点播——一百余个透明动画随时无缝衔接；还能跟随 DSH 会话事件切换工作状态动画、按档位播放余额动画 + 头顶气泡、碎碎念与对话聊天、窗口失焦时弹系统通知。可多开同屏，能脱离浏览器住上**桌面**（透明置顶小窗），也能自己添加**全新宠物种类**（pet pack）。
+一只住在你桌面上的宠物：一百余个透明动画随时无缝衔接（待机呼吸、打瞌睡、玩魔方、吃火锅……），可点击、拖拽、甩抛、多开、跟随工作状态切换动画，还能**说话**——本地语音识别 + 大模型对话 + 语音合成，配上好感度记忆。
 
-这不是一个普通插件，而是**完整的三件套项目**：
-
-```
-① 提示词（配方）    →  ② 素材生成链（引擎）  →  ③ 插件（成品）
-AI 生成动画的配方     源视频 → 透明动画的管线    运行在 DSH 里的宠物
-```
-
-任何人 clone 本仓库，都可以**从零生成自己的桌面宠物**——换角色、换动作、换风格，全流程可复现。
+它有两种用法，**先确认你要哪种**，再看对应章节，别混着装。
 
 > **分支说明**：本仓库基于 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)（MIT），
-> 在此基础上加了「桌面伴侣」一层：独立应用、语音对话、情感养成。上游的素材链与插件能力**原样保留**，
-> 只想装原版插件的话，直接用上游仓库或 `dsh plugin add dsh-pet` 即可。
+> 在其上加了「伴侣模式」：独立桌面应用、语音对话、情感养成、上下文压缩。
+> 上游的素材链与插件能力（动画生成、pet pack、余额、碎碎念）**原样保留**。
 
 ---
 
-## 🎙 伴侣模式（本分支新增）
+## 两种用法
 
-| 能力 | 说明 |
-| --- | --- |
-| **独立桌面应用** | 不装 DSH 也能双击运行（`dsh-pet\scripts\app.cmd`），自带设置中心 `/companion/` |
-| **语音对话** | 本机 LiveKit + Python Agent：SenseVoice 本地 STT、Edge / MeloTTS 双 TTS、唤醒词、可随时打断、常开模式 |
-| **情感养成** | 好感 / 信任 / 熟悉 / 精力 + 情节与事实记忆，影响称呼、动画选择与语音韵律；状态可见、可重置 |
-| **陪伴功能** | 用量与费用面板、主动关心（默认关）、专注模式、提醒日程、回忆录导出、气泡快捷回复 |
+| | **方式 A：完整伴侣应用**（推荐） | **方式 B：只当 DSH 插件** |
+| --- | --- | --- |
+| 你能得到 | 桌宠 + 语音对话 + 情感养成 + 全部陪伴功能 | 桌宠动画 + 碎碎念/对话/余额（在 DSH 界面里） |
+| 需要什么 | Windows + Node 24 + Python 3.12，**不用装 DSH** | 已装 DSH（桌面版或 `dsh web`） |
+| 磁盘占用 | 约 1.3 GB（含语音模型） | 约 100 MB |
+| 怎么装 | 往下看「方式 A」，六步 | 跳到 [方式 B](#方式-b只当-dsh-插件) |
+| 适合谁 | 想要"会说话的电子宠物" | 只想在 DSH 里多只桌宠 |
 
-<p align="center">
-  <em>截图暂不随仓库分发：界面截图都来自真实运行实例，含个人对话与宠物名，故不入库。想看效果请本地启动（见下）。</em>
-</p>
+**两种方式共用同一份代码**，只是启动方式不同；数据目录也共用（默认 `%USERPROFILE%\.dsh\dsh-pet`）。
 
-**文档**
+## 目录
 
-- 使用说明（启动、右键菜单、语音、情感、设置、故障排查）→ [`dsh-pet/docs/USAGE.md`](dsh-pet/docs/USAGE.md)
-- 架构与路线（为什么用 LiveKit、Python sidecar、记忆与情感设计）→ [`dsh-pet/docs/TECHNICAL-ROUTE.md`](dsh-pet/docs/TECHNICAL-ROUTE.md)
-- 语音 Agent 与本地 LiveKit 环境 → [`voice/README.md`](voice/README.md)
-- 实施计划（决策记录、阶段、验收清单）→ [`PLAN-companion-voice.md`](PLAN-companion-voice.md)
+- [方式 A：完整伴侣应用](#方式-a完整伴侣应用推荐)
+- [日常怎么用](#日常怎么用)
+- [语音对话](#语音对话)
+- [记忆、上下文压缩与归档](#记忆上下文压缩与归档)
+- [情感养成与陪伴功能](#情感养成与陪伴功能)
+- [数据、备份与隐私](#数据备份与隐私)
+- [常见问题](#常见问题)
+- [卸载](#卸载)
+- [方式 B：只当 DSH 插件](#方式-b只当-dsh-插件)
 
-### 跑起来（Windows）
+---
+
+## 方式 A：完整伴侣应用（推荐）
+
+### 环境要求
+
+| 项 | 要求 | 怎么确认 |
+| --- | --- | --- |
+| 系统 | Windows 10/11 x64（当前只在 Windows 上验证过） | — |
+| Node.js | **24.x** | `node -v` |
+| pnpm | **12.x** | `pnpm -v`（没有就 `npm i -g pnpm`） |
+| PowerShell | **7.x**（脚本用了 `#requires -Version 7.0`） | `pwsh -v` |
+| Python | **3.12**（只有语音需要） | `py -3.12 -V` |
+| 磁盘 | 约 1.3 GB（模型 400 MB + venv 470 MB + 依赖 250 MB + 二进制 55 MB） | — |
+| 网络 | 首次需能访问 `github.com`、`huggingface.co` | — |
+| 麦克风 | 语音需要；没有也能用文字 | — |
+
+> Python 必须是**独立 3.12**，不能用 Anaconda 3.11——`livekit-local-inference` 的原生扩展会崩（`0xC0000005`）。
+
+### 第 1 步：拉代码
 
 ```bat
-git clone https://github.com/<你的账号>/dsh-pet-companion.git
+git clone https://github.com/ychenshiyi/dsh-pet-companion.git
 cd dsh-pet-companion
+```
 
-:: ① 桌宠主体
+### 第 2 步：构建桌宠主体（必须做一次）
+
+```bat
 cd dsh-pet
 pnpm install
 pnpm run bundle
 pnpm run ensure:electron
 cd ..
+```
 
-:: ② 语音栈：LiveKit 服务端 + 离线模型 + venv（约 1.2GB，可重复执行）
+- `pnpm install`：装依赖（约 250 MB）
+- `pnpm run bundle`：产出 `lib/app.js`——**应用入口，不入库，必须自己编**
+- `pnpm run ensure:electron`：把 Electron 下载到 `~/.dsh/electron/`（首次约 100 MB）
+
+三个都成功再往下走。`pnpm run bundle` 报错通常是 Node 版本不对，先 `node -v` 核对。
+
+### 第 3 步：装语音栈（可选，不做就只有文字对话）
+
+```bat
 pwsh -File voice\scripts\bootstrap.ps1
+```
 
-:: ③ 启动（数据默认落在 %USERPROFILE%\.dsh\dsh-pet）
+它会做四件事，全部带 SHA256 校验、可重复执行：
+
+1. 下载 LiveKit 服务端（55 MB）→ `voice/livekit_*_windows_amd64/`
+2. 下载 SenseVoice 语音识别模型（239 MB）+ MeloTTS 语音合成模型（167 MB）→ `voice/models/`
+3. 用 Python 3.12 建 venv 并装依赖（约 470 MB，3–6 分钟）
+4. 生成 `voice/livekit.yaml`（含随机密钥，已被 gitignore）
+
+常用参数：
+
+| 场景 | 加什么 |
+| --- | --- |
+| 只用 Edge 在线音色，不要离线 TTS | `-SkipModels` |
+| 国内访问 huggingface 很慢 | `-Mirror`（改走 hf-mirror.com） |
+| 重装一遍 | `-Force` |
+| 不想装 LiveKit（已有自己的服务） | `-SkipLiveKit` |
+
+> 只想要文字对话：跳过这一步，第 4 步照常能启动。
+
+### 第 4 步：启动
+
+```bat
 dsh-pet\scripts\app.cmd
 ```
 
-只想先看语音：`voice\scripts\dev.cmd`，浏览器打开 <http://127.0.0.1:7890> 直接说话。
+首次启动会自动创建数据目录 `%USERPROFILE%\.dsh\dsh-pet`，并从旧的 DSH 数据目录复制一份配置（如果有）。
+想换数据位置就设环境变量 `DSH_PET_HOME` 再启动，或在设置里「路径 / 关于」页切换。
+
+### 第 5 步：填 API Key（不做就没法对话）
+
+右键宠物 → **打开设置** → **模型** 标签：
+
+1. 选「DeepSeek（默认）」
+2. `API Key` 填你的 key
+3. 点 **测试连接**，应显示「连接成功」
+4. 点右下角 **保存设置**
+
+Key 只写进本机 `companion-secrets.json`（ACL 仅当前用户），**不回显、不进仓库、不传给第三方**。
+
+### 第 6 步：开语音
+
+1. 右键 → **打开设置** → **语音** 标签 → 选音色（如 `zh-CN-XiaoxiaoNeural`）→ 保存
+2. 右键 → **语音对话（常开）**，菜单右侧出现 `✓` 表示已开
+3. 对着麦克风说 **「小鱼」**（唤醒词，可在语音页改），再说你要说的话
+
+首次开语音会拉起 LiveKit + Python Agent，冷启动约 2–4 秒；空闲 5 分钟会自动回收，下次说话会再拉起。
 
 ---
 
-## 快速开始（安装插件）
+## 日常怎么用
+
+### 右键菜单
+
+| 菜单项 | 作用 |
+| --- | --- |
+| **打开设置** | 打开设置中心（所有配置都在这里） |
+| **对话** `T` | 文字聊天；鼠标悬停在宠物上按 `T` 也行 |
+| **碎碎念** | 立刻让它说一句（不受自动周期开关影响） |
+| **语音对话（常开）** | 开/关语音；`✓` = 已开 |
+| **显示语音对话框** | 宠物右侧展开实时字幕气泡（你说的话 + 它的回复）；`✓` = 已开 |
+| **情感 / 心情…** | 直接跳到设置的情感页 |
+| **查看余额** | 手动查一次当前服务商余额 |
+| **回到初始位置** | 把宠物挪回配置的角落 |
+| **重载配置** | 改完 `main-config.jsonc` 后重新读 |
+
+### 设置中心（九个标签）
+
+| 标签 | 能改什么 |
+| --- | --- |
+| **模型** | 多服务商（DeepSeek/OpenAI 兼容）、Base URL、模型名、API Key、温度、测试连接 |
+| **语音** | 引擎（Edge 在线 / MeloTTS 离线）、音色、语速、音调、音量、识别语言、唤醒词、空闲秒数、低延迟模式、试听 |
+| **对话** | 记忆目录、携带轮数、token 预算、压缩触发比例、保留轮数、压缩提醒间隔、全文归档上限、BM25 检索条数、压缩统计与「立即压缩」 |
+| **情感** | 好感/信任/熟悉/精力、当前心情、情节与事实、成长日志、启用开关、重置成长 |
+| **陪伴** | 用量与费用面板、每日上限、主动关心（默认关）、专注模式、提醒日程、回忆录导出 |
+| **宠物** | 每只宠物的名称、大小、位置、显示位置、语音与人设覆盖 |
+| **显示** | 桌宠显示方式（web/desktop/both/none）、字体、物理参数 |
+| **LiveKit** | 内置/外部服务、端口、房间名、启动与停止语音服务 |
+| **路径 / 关于** | 数据目录（可切换）、打开文件夹、版本信息 |
+
+### 隐私相关的三个开关
+
+- **专注模式**（陪伴页）：关掉主动关心；可同时立即关闭语音
+- **情感养成**（情感页）：整体关闭后不再记录关系状态
+- **语音情绪**：只从转写文本判断情绪，不分析声纹、不保存音频
+
+---
+
+## 语音对话
+
+| 行为 | 说明 |
+| --- | --- |
+| 唤醒 | 空闲超过 `唤醒空闲秒数`（默认 10 秒）后，要说唤醒词「小鱼」才进入对话 |
+| 打断 | 它说话时直接开口即可打断（本地 VAD 判定，不等云端超时） |
+| 字幕 | 右键「显示语音对话框」在宠物右侧展开，实时显示双方文本 |
+| 低延迟模式 | 默认开：更积极的 VAD/断句、回复上限 80 tokens、启动预热识别模型；说长句容易被截断，可在语音页关掉 |
+| 关闭 | 右键「语音对话（常开）」取消 `✓`；LiveKit 与 Python 进程随后退出 |
+
+**两种音色引擎**：
+
+- **Edge（默认）**：微软在线音色，自然、零占用，但需要联网
+- **MeloTTS（离线）**：本机合成，断网可用，音色平一些；Edge 失败时会自动回退到它
+
+---
+
+## 记忆、上下文压缩与归档
+
+文字与语音**共用同一份记忆**，不会聊两套。
+
+- `conversations/memory.json`：最近对话全文 + 上下文摘要，文本宿主是唯一写者（语音通过本机 HTTP 读写，避免两边抢文件）
+- 每次拼上下文按 token 预算来：默认预算 `6000`、达到 `75%` 触发压缩、最近 `6` 轮（1 轮 = 1 问 1 答）始终保留原文
+- 旧对话被压成滚动摘要（`context.summary`）；压缩失败会退回抽取式摘要，**不中断对话**
+- 原文不会因为压缩被删除：超过 `archiveMaxMessages`（默认 2000 条）的部分移到 `conversations/archive/`，只追加、可导出
+- 还会用本地 BM25 从旧消息里捞相关片段（`retrievalTopK`，默认 3；设 0 关闭）
+- 不同宠物各自分桶，上下文互不串
+
+这些都能在**设置 → 对话**里调，也能看到压缩次数与「立即压缩」。
+
+---
+
+## 情感养成与陪伴功能
+
+**四个数值**：好感、信任、熟悉、精力（各 0–100）+ 当前心情（开心/平静/害羞/低落/生气/疲惫）。
+
+- 每轮对话根据你的话做启发式更新（夸奖加好感、吐槽减信任……），数值有夹紧，不会一夜满好感
+- 数值影响：称呼与措辞、动画选择、语音韵律（开心快一点、低落慢一点）
+- **完全本地**：状态存在 `conversations/emotion.json`，可见、可关、可一键重置
+
+**陪伴功能**（都在设置 → 陪伴）：
+
+| 功能 | 说明 |
+| --- | --- |
+| 用量与费用 | 文本真实 token、语音按字符估算；可设每日上限与提醒 |
+| 主动关心 | **默认关**；开了也要过专注模式/安静时段/每日次数/最小间隔四道闸门 |
+| 专注模式 | 一键静音主动消息，可同时关语音 |
+| 提醒 / 日程 | 到点弹气泡，存 `conversations/reminders.json` |
+| 回忆录 | 导出对话 + 关系 + 事实 + 情节 + 成长日志为 Markdown |
+| 气泡快捷回复 | 桌面气泡上「继续 / 换话题 / 记下来」 |
+
+---
+
+## 数据、备份与隐私
+
+全部数据都在 **`%USERPROFILE%\.dsh\dsh-pet`**（可用 `DSH_PET_HOME` 改）：
+
+| 文件 / 目录 | 内容 | 敏感 |
+| --- | --- | --- |
+| `main-config.jsonc` | 桌宠配置（大小、位置、动画池…） | 否 |
+| `companion.json` | 伴侣配置（模型/语音/情感开关） | 否 |
+| `companion-secrets.json` | **API Key**（ACL 仅当前用户） | **是** |
+| `conversations/memory.json` | 文本+语音共用对话与摘要 | **是** |
+| `conversations/emotion.json` | 好感/信任/心情/情节/事实 | **是** |
+| `conversations/archive/` | 超限的旧原话（JSONL） | **是** |
+| `conversations/voice-transcript.jsonl` | 语音对话文本记录 | **是** |
+| `conversations/usage.jsonl` | 用量与费用 | 否 |
+| `conversations/reminders.json` | 提醒/日程 | 否 |
+| `livekit-keys.json`、`livekit.yaml` | 本机 LiveKit 密钥（自动生成） | **是** |
+| `logs.txt` | 运行日志（含对话片段） | **是** |
+
+- **备份 / 迁移**：整个目录拷走即可；换机器后设 `DSH_PET_HOME` 指过去。
+- **重置对话但留配置**：删 `conversations/` 目录。
+- **完全重置**：删整个 `dsh-pet` 目录，下次启动重新生成。
+- **截图/分享前注意**：情感页与对话页会显示真实对话，别直接截屏发出去。
+- **语音音频不落盘**，只留转写文本；不采集声纹。
+
+---
+
+## 常见问题
+
+| 现象 | 处理 |
+| --- | --- |
+| 双击 `app.cmd` 闪退 | 先手动跑 `node scripts/start-app.mjs` 看报错；多半是没执行 `pnpm run bundle` 或没装 Electron |
+| 右键没有「语音对话」 | 菜单里没有该项说明宿主没拿到语音模块；确认 `dsh-pet\scripts\app.cmd` 启动的是**本仓库**版本 |
+| 开语音后一直「启动中」 | 看 `%USERPROFILE%\.dsh\dsh-pet\logs.txt`；常见原因：Python 3.12 没装、`bootstrap.ps1` 没跑完、7880 端口被占 |
+| 叫「小鱼」没反应 | 麦克风权限（Windows 设置 → 隐私 → 麦克风 → 允许桌面应用）；或唤醒词改过；或已在对话中没有触发唤醒 |
+| 有字幕但没声音 | Edge TTS 需要联网；断网时在语音页把引擎切成 **MeloTTS** |
+| 对话报 401 / 404 | Key 无效或模型名不对；当前默认 `deepseek-flash`，可选 `deepseek-v4-pro` |
+| 内存占用高 | 语音关闭后 LiveKit/Agent 会退出；空闲 5 分钟也会自动回收。仍高就看是不是开了多只宠物或多会话 |
+| 设置页打不开/白屏 | 端口被占；关掉占用进程或改 LiveKit 端口后重启应用 |
+| 中文乱码 | 终端字体问题，不影响运行；日志文件是 UTF-8 |
+
+---
+
+## 卸载
+
+```bat
+:: 1. 先退出应用（托盘图标 → 退出）
+:: 2. 删代码
+rmdir /s /q dsh-pet-companion
+
+:: 3. 删数据（配置、对话、密钥都在这里）
+rmdir /s /q "%USERPROFILE%\.dsh\dsh-pet"
+```
+
+`~/.dsh/electron/` 是多个 DSH 组件共用的运行时缓存，**不用删**。
+
+---
+
+## 方式 B：只当 DSH 插件
+
+如果你只是想在 DSH 里多一只桌宠，不需要语音和情感养成，用这个方式，**不用装 Python、不用下模型**。
 
 装法取决于你在用哪个 DSH：
 
@@ -190,6 +403,7 @@ dsh plugin --profile web add file:D:/path/to/dsh-pet/dsh-pet
 
 ## 兼容性
 
+- **伴侣模式（本分支新增）**：只在 **Windows 10/11 x64** 上验证过；语音栈依赖 `livekit-server.exe` 与 Windows 路径推导脚本，Linux/macOS 未适配
 - **操作系统**：Windows / Linux / macOS 三端均可运行——浏览器 overlay 与桌面模式（Electron 透明置顶窗）行为完全一致；Electron 按平台自动探测/下载（`electron.exe` / `Electron.app` / linux 单文件），无需手动安装
 - **无头 / 无桌面环境**：支持 Linux headless 等无图形会话——桌面模式自动检测显示环境（Linux 无 `DISPLAY` / `WAYLAND_DISPLAY` 时判定无显示、跳过桌面窗口，仅日志告警），浏览器 overlay 不受影响
 - **浏览器**：浏览器 overlay 兼容 **Chromium 内核（Chrome / Edge 等）与 Firefox**——透明动画依赖 VP9-Alpha webm，三者均已实测透明确认；**不支持 Safari**（macOS 不认 webm alpha，透明渲染为黑底）——macOS 用 `.mov` 素材（GitHub Release `assets-mov`），下载放入即可（见「②.5 Safari/HEVC 兼容素材」）
@@ -456,26 +670,39 @@ AI 提示词 → 绿幕视频 → 透明动画 → 插件，换角色、换动�
 
 ```
 ├── README.md  MAKE-YOUR-OWN-PET.md  CONFIG.md  API.md  CORDIS.md  openapi.yaml   # 说明 / 宠物制作指南 / 配置 / HTTP 接口 / Cordis 服务 / OpenAPI 规范
+├── NOTICE.md          # 第三方组件、模型与字体授权
+├── PLAN-companion-voice.md  # 伴侣模式的实施计划（决策记录 / 阶段 / 验收清单）
 ├── prompts/           # ① 动画生成提示词配方（绿幕规范 + 按秒分解）
-├── assets/            # 仓库展示用截图
+├── assets/            # 仓库展示用截图（本地运行截图不入库，见 .gitignore）
 ├── tools/             # 开发工具：API 调试页、cordis-probe mock 服务商、DPI 探针
-├── .github/workflows/ # CI：Safari/HEVC 转码流水线（macOS runner，手动触发 → 发布 assets-mov Release）
+├── scripts/doctor.mjs # 发布前自检：密钥扫描 / 误入库 / .gitignore 覆盖 / 大文件阈值
+├── .github/workflows/ # CI：日常 ci.yml（TS 测试 + Python 测试）、HEVC 素材转码、桌面应用发版
+├── voice/             # 语音栈（本分支新增）
+│   ├── agent/         #   Python Agent：SenseVoice STT / Edge·MeloTTS / 记忆 / 情感 / 唤醒门
+│   ├── tests/         #   pytest 单测（text_split / wake_gate / prosody / emotion）
+│   ├── dev/           #   本机令牌服务 + 浏览器联调页 + 端到端检查脚本
+│   └── scripts/       #   bootstrap（下载模型与二进制 + 建 venv）/ dev / start / stop / status
 ├── dsh-pet/           # ③ 插件（可独立 npm 发布）
 │   ├── src/
-│   │   ├── host/       # 宿主半侧：配置 / 路由 / 余额 / 工作状态
+│   │   ├── host/       # 宿主半侧：配置 / 路由 / 余额 / 工作状态 / 陪伴模块
 │   │   ├── client/     # 浏览器半侧：宠物渲染 / 动画链 / 设置页
+│   │   ├── app/        # 伴侣模式：设置中心 / 语音编排 / 路由（本分支新增）
 │   │   ├── shared/     # 双端共用纯逻辑（物理 / 菜单 / 取数）
 │   │   └── standalone/ # 独立模式 CLI（不依赖 DSH 直接跑桌宠）
-│   ├── lib/            # 构建产物（npm run build 生成，不入库）
-│   ├── runtime/        # 桌面模式运行壳（Electron 透明窗）
+│   ├── docs/           # 使用说明 / 技术路线 / 精简审查
+│   ├── lib/            # 构建产物（pnpm run bundle 生成，不入库）
+│   ├── runtime/        # 桌面模式运行壳（Electron 透明窗）+ 隐藏语音窗
 │   ├── assets/         # webm 动画 / preview GIF / 字体 / 图标 / config.jsonc 默认配置
-│   └── scripts/        # 构建、发布与开发脚本
+│   └── scripts/        # 构建、发布与开发脚本（app.cmd 一键启动伴侣应用）
 └── LICENSE             # MIT
 ```
 
 ## 💬 反馈与发版节奏
 
-欢迎提 [issue](https://github.com/PC2005-cloud/dsh-pet/issues) 与 PR——bug、体验问题随时反馈。**新功能请先开 issue** 说明使用场景，由维护者判断是否实现、以及放在插件本体还是作为第三方扩展，不要在确认前直接提交实现 PR。与桌宠本身关系不大、或实现特别复杂的功能，通常不会进本体，而是通过现有接口由第三方扩展实现。动手前也请先翻一眼 [提交记录](https://github.com/PC2005-cloud/dsh-pet/commits/main)，确认不是已经修掉的同款问题（有些问题可能已经在 `main` 上修好了，只是还没发版）。
+> 本仓库是**伴侣模式的开发分支**：语音、情感、独立应用相关的问题提到本仓库 issue；
+> 纯插件 / 素材链 / 动画配方的问题属于上游，请提到 [上游仓库](https://github.com/PC2005-cloud/dsh-pet/issues)。
+
+欢迎提 issue 与 PR——bug、体验问题随时反馈。**新功能请先开 issue** 说明使用场景，由维护者判断是否实现、以及放在插件本体还是作为第三方扩展，不要在确认前直接提交实现 PR。与桌宠本身关系不大、或实现特别复杂的功能，通常不会进本体，而是通过现有接口由第三方扩展实现。动手前也请先翻一眼 [提交记录](https://github.com/PC2005-cloud/dsh-pet/commits/main)，确认不是已经修掉的同款问题（有些问题可能已经在 `main` 上修好了，只是还没发版）。
 
 - **小修不单独发版**：不影响使用的小 bug 与优化会**累计**到下一个版本一起发，避免版本更迭过于频繁。所以「`main` 上已经修了」不等于「你装的这版已经包含」——`latest` 没更新时，以 `main` 的提交记录为准。
 - **想立刻用上未发布的修复**：按上面的「从源码安装」把插件指向本地仓库即可；注意**宿主半侧**的代码改动要**重开 DSH** 才生效（浏览器半侧刷新页面即可）。
