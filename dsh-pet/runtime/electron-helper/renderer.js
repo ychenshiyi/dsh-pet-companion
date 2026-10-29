@@ -26,6 +26,26 @@ if (window.petBridge) {
   }
 }
 
+// 语音对话气泡：主进程广播开关；PetSprite 在右侧渲染，不占用原有 whisper 气泡。
+window.__transcriptOn = false;
+function applyTranscriptState(state) {
+  window.__transcriptOn = !!(state && state.on);
+  for (const sprite of sprites) {
+    if (typeof sprite.setVoiceChat === 'function') sprite.setVoiceChat(window.__transcriptOn);
+  }
+}
+if (window.petBridge) {
+  if (typeof window.petBridge.onTranscriptStatus === 'function') {
+    window.petBridge.onTranscriptStatus(applyTranscriptState);
+  }
+  if (typeof window.petBridge.getTranscriptStatus === 'function') {
+    window.petBridge
+      .getTranscriptStatus()
+      .then(applyTranscriptState)
+      .catch(() => {});
+  }
+}
+
 // 配置（大声报错；失败 5s 重试）
 function showError(message) {
   console.error('[dsh-pet] ' + message);
@@ -103,6 +123,7 @@ async function boot() {
     window.__dshPetDebug.configOk = true;
     window.__dshPetDebug.spriteCount = sprites.length;
     for (const s of sprites) s.playIdle();
+    applyTranscriptState({ on: window.__transcriptOn });
     startLoops();
   } catch (e) {
     const msg = '配置加载失败：' + (e && e.message ? String(e.message) : String(e));

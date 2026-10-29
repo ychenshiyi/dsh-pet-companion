@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>语音对话框</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #1f2d3a;
+        --muted: #6b7a89;
+        --line: #d8e1ea;
+        --bg: #f3f7fb;
+        --user: #1f6feb;
+        --pet: #fff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          14px/1.6 'Microsoft YaHei UI',
+          'PingFang SC',
+          system-ui,
+          sans-serif;
+        display: flex;
+        flex-direction: column;
+      }
+      header {
+        padding: 12px 16px;
+        background: #fff;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      header b {
+        font-size: 15px;
+      }
+      header span {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      #messages {
+        flex: 1;
+        overflow: auto;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .empty {
+        margin: auto;
+        color: var(--muted);
+        font-size: 13px;
+        text-align: center;
+        line-height: 1.8;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: flex-end;
+        max-width: 92%;
+      }
+      .row.user {
+        align-self: flex-end;
+        flex-direction: row-reverse;
+      }
+      .row.pet {
+        align-self: flex-start;
+      }
+      .who {
+        font-size: 11px;
+        color: var(--muted);
+        flex: 0 0 auto;
+        padding-bottom: 2px;
+      }
+      .bubble {
+        padding: 8px 12px;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: var(--pet);
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .row.user .bubble {
+        background: var(--user);
+        border-color: var(--user);
+        color: #fff;
+        border-bottom-right-radius: 4px;
+      }
+      .row.pet .bubble {
+        border-bottom-left-radius: 4px;
+      }
+      footer {
+        padding: 8px 16px;
+        background: #fff;
+        border-top: 1px solid var(--line);
+        font-size: 12px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <header><b>语音对话框</b><span id="status">等待语音…</span></header>
+    <div id="messages">
+      <div class="empty">开始语音对话后，这里会实时显示<br />你说的话和桌宠的回复。</div>
+    </div>
+    <footer>只记录文本，不保存音频</footer>
+    <script src="/companion/transcript.js"></script>
+  </body>
+</html>

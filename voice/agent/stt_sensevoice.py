@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 from collections.abc import Callable
 
@@ -25,6 +26,7 @@ from .audio_utils import audio_buffer_to_pcm16, pcm16_to_float32
 _RECOGNIZER = None
 _RECOGNIZER_KEY: tuple | None = None
 _CREATE_LOCK = threading.Lock()
+logger = logging.getLogger("pet-agent.stt")
 
 
 def _get_recognizer(
@@ -99,6 +101,20 @@ class SenseVoiceSTT(stt.STT):
             type=stt.SpeechEventType.FINAL_TRANSCRIPT,
             alternatives=[stt.SpeechData(language=lang, text=text)],
         )
+
+    def warmup(self) -> None:
+        """低延迟模式：在会话开始前加载模型，避免第一句多等 1–2 秒。失败不影响启动。"""
+        try:
+            _get_recognizer(
+                self._model_path,
+                self._tokens_path,
+                self._num_threads,
+                self._use_itn,
+                self._language,
+            )
+            logger.info("SenseVoice 预热完成")
+        except Exception as error:  # noqa: BLE001
+            logger.warning("SenseVoice 预热失败：%s", error)
 
     def _decode(self, pcm: bytes, sample_rate: int, language: str) -> tuple[str, str]:
         if not pcm:

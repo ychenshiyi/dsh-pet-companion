@@ -5,17 +5,28 @@
  * 依赖由 apply 显式传入（见输入类型），模块内不读全局、不建单例。
  * @module dsh-pet/src/host/plugin/chat-memory
  */
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { generateChat, type ChatMemoryMessage } from '../chat.ts';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { composeSystemPrompt, petPersona } from '../persona.ts';
-import { findPetInstance, readAllConfig, removeRoundsByTs, sliceMemoryRounds } from '../config.ts';
+import { findPetInstance, readAllConfig, removeRoundsByTs } from '../config.ts';
 import type { PetImageRef } from '../image-attachment.ts';
 import { limitPool, pickMeme, readMemePool } from '../memes.ts';
 import { generateWhisper } from '../whisper.ts';
 import { configuredModel } from '../model-selection.ts';
 import { createEmotionStore, emotionPrompt, moodAnim, type EmotionState } from './emotion.ts';
 import { readRuntimePolicy } from './policy.ts';
+import { archiveOverflow, readArchive } from './archive.ts';
+import { bm25Search, retrievalBlock } from './retrieval.ts';
+import {
+  applyCompression,
+  contextStateOf,
+  estimateMessages,
+  estimateTokens,
+  shouldRemind,
+  summaryBlock,
+  type MemoryBucket,
+} from './summary.ts';
 import { createUsageStore } from './usage.ts';
 import type { HostSetup } from './setup.ts';
 import type { HostContext } from './context.ts';
@@ -57,7 +68,7 @@ export function createChatMemory(deps: ChatMemoryInput) {
   let chatQueue: Promise<void> = Promise.resolve();
 
   /** 读记忆文件：不存在 → 空；解析失败/根不是对象 → 记日志 + 空记忆（不备份、不改写源文件） */
-  const readMemory = async (): Promise<Record<string, Record<string, { messages: ChatMemoryMessage[] }>>> => {
+  const readMemory = async (): Promise<Record<string, Record<string, MemoryBucket>>> => {
     let raw: string;
     try {
       raw = await readFile(memoryPath, 'utf8');
@@ -67,7 +78,7 @@ export function createChatMemory(deps: ChatMemoryInput) {
     try {
       const parsed = JSON.parse(raw) as Record<string, unknown>;
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object');
-      return parsed as Record<string, Record<string, { messages: ChatMemoryMessage[] }>>;
+      return parsed as Record<string, Record<string, MemoryBucket>>;
     } catch (e) {
       log.error(
         `dsh-pet: 记忆文件无法解析（对话将从头开始）：${memoryPath}（${e instanceof Error ? e.message : String(e)}）`,
@@ -76,9 +87,22 @@ export function createChatMemory(deps: ChatMemoryInput) {
     }
   };
 
-  const writeMemory = async (mem: Record<string, Record<string, { messages: ChatMemoryMessage[] }>>): Promise<void> => {
+  const writeMemory = async (mem: Record<string, Record<string, MemoryBucket>>): Promise<void> => {
     await mkdir(userRoot, { recursive: true });
     await writeFile(memoryPath, JSON.stringify(mem, null, 2), 'utf8');
+  };
+
+  const archiveDir = process.env.DSH_PET_ARCHIVE_DIR || join(dirname(memoryPath), 'archive');
+  const archiveMax = (): number => Math.max(100, Number(process.env.DSH_PET_ARCHIVE_MAX_MESSAGES) || 2000);
+  /** 把超出上限的旧原话移到 archive；摘要/当前上下文不变。 */
+  const archiveIfNeeded = async (entry: string, petId: string, bucket: MemoryBucket): Promise<void> => {
+    const result = await archiveOverflow(entry, petId, bucket, {
+      dir: archiveDir,
+      maxMessages: archiveMax(),
+    });
+    if (result.removed > 0) {
+      log.info(`[dsh-pet] 全文归档 pet=${petId} 移出 ${result.removed} 条 → ${result.file}`);
+    }
   };
 
   /** 把一次读写封进串行队列（同进程内防交错），返回 fn 的结果 */
@@ -109,7 +133,31 @@ export function createChatMemory(deps: ChatMemoryInput) {
     const v = Number(conf.chatMemoryRounds);
     return Number.isFinite(v) && v >= 0 ? Math.floor(v) : 5;
   };
-
+  // 上下文参数来自 app 设置（环境变量由设置页保存时写入），没设置时回落到条目配置/内置默认。
+  const envNumber = (name: string): number | undefined => {
+    const value = Number(process.env[name]);
+    return Number.isFinite(value) ? value : undefined;
+  };
+  const configNumber = (conf: Record<string, unknown>, key: string, fallback: number): number => {
+    const value = Number(conf[key]);
+    return Number.isFinite(value) ? value : fallback;
+  };
+  const contextBudget = (conf: Record<string, unknown>): number =>
+    Math.max(1500, envNumber('DSH_PET_CONTEXT_BUDGET') ?? configNumber(conf, 'contextBudgetTokens', 6000));
+  const contextKeep = (conf: Record<string, unknown>): number =>
+    Math.max(2, envNumber('DSH_PET_CONTEXT_KEEP') ?? configNumber(conf, 'contextKeepRecentTurns', 6));
+  const contextCompressAt = (conf: Record<string, unknown>): number => {
+    const value = envNumber('DSH_PET_CONTEXT_COMPRESS_AT') ?? configNumber(conf, 'contextCompressAt', 0.75);
+    return Math.min(0.95, Math.max(0.5, value));
+  };
+  const contextRemindEvery = (conf: Record<string, unknown>): number =>
+    Math.max(0, envNumber('DSH_PET_CONTEXT_REMIND_EVERY') ?? configNumber(conf, 'contextRemindEvery', 5));
+  const retrievalEnabled = (conf: Record<string, unknown>): boolean =>
+    process.env.DSH_PET_RETRIEVAL_ENABLED !== '0' && conf.retrievalEnabled !== false;
+  const retrievalTopK = (conf: Record<string, unknown>): number =>
+    Math.max(0, envNumber('DSH_PET_RETRIEVAL_TOPK') ?? configNumber(conf, 'retrievalTopK', 3));
+  const retrievalMaxChars = (conf: Record<string, unknown>): number =>
+    Math.max(200, envNumber('DSH_PET_RETRIEVAL_MAXCHARS') ?? configNumber(conf, 'retrievalMaxChars', 1200));
   /** 生成并返回某宠物的一句碎碎念（周期调度与菜单手动触发共用）：人设取它自己的 whisperPrompt，
    *  没写回落到所属条目；成功写进 S 的 pets.<id>.say——碎碎念 / 命令气泡 / 对话回复在前端是同一条
    *  展示链路，所以共用一个叶子。配图开关开启时从表情包池随机抽 1 张。
@@ -159,6 +207,76 @@ export function createChatMemory(deps: ChatMemoryInput) {
     return { ok: true, text: result.text, ...(result.image ? { image: result.image } : {}) };
   };
 
+  /**
+   * 把一段旧对话压成摘要。优先 LLM；失败时退回抽取式摘要（仍保留关键原话，绝不丢上下文）。
+   * 只给纯文本（不带表情包池/图片），避免摘要被 [图:] 等协议污染。
+   */
+  const summarizeOld = async (
+    previous: string,
+    messages: readonly ChatMemoryMessage[],
+  ): Promise<string | undefined> => {
+    if (messages.length === 0) return previous.trim() || undefined;
+    const transcript = messages
+      .map((message) => `${message.role === 'user' ? '主人' : '桌宠'}：${message.content}`)
+      .join('\n')
+      .slice(-12_000);
+    const prompt = [
+      '请把下面这段旧对话压缩成一段长期记忆摘要，供以后继续聊天时参考。',
+      '要求：',
+      '1. 保留称呼、关系变化、喜好/厌恶、承诺、约定、日期、未完成的话题、重要情绪转折。',
+      '2. 不要编造；不确定的信息宁可不写。',
+      '3. 用第三人称，300–800 字，不要 Markdown 标题。',
+      previous.trim() ? `\n【已有摘要】\n${previous.trim()}` : '',
+      `\n【旧对话】\n${transcript}`,
+    ].join('\n');
+    const result = await generateChat({
+      ctx,
+      system: '你负责整理桌宠与主人的长期记忆，只输出摘要正文。',
+      history: [],
+      userText: prompt,
+      pool: [],
+    });
+    const text = result.ok ? result.text.trim() : '';
+    if (text) return text.slice(0, 4000);
+    const fallback = extractiveSummary(previous, messages);
+    log.warn(
+      '[dsh-pet] 上下文压缩改用抽取式摘要' +
+        (result.ok ? '（模型无文本）' : `（${result.reason}${result.message ? '：' + result.message : ''}）`),
+    );
+    return fallback;
+  };
+
+  /** 模型压缩失败时的兜底：保留用户原话里较有信息量的句子，过滤语气词/短句。 */
+  const extractiveSummary = (previous: string, messages: readonly ChatMemoryMessage[]): string => {
+    const users = messages
+      .filter((message) => message.role === 'user')
+      .map((message) => message.content.replace(/\s+/g, ' ').trim())
+      .filter((line) => line.length >= 6)
+      .filter(
+        (line) =>
+          !/^(嗯+|哦+|啊+|好|好的|对|对的|是|是的|行|可以|没事|没什么|知道了|哈哈+|呵+|在吗|你好)[。！？!?，,、\s]*$/.test(
+            line,
+          ),
+      );
+    const seen = new Set<string>();
+    const unique = users.filter((line) => {
+      const key = line.slice(0, 40);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const keywords =
+      /我|喜欢|讨厌|想要|记住|答应|约|明天|今天|昨天|工作|游戏|名字|生日|不要|别|害怕|开心|难过|生气|计划|准备|以后/;
+    const picked = unique
+      .map((line, index) => ({ line, index, score: line.length + (keywords.test(line) ? 40 : 0) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 24)
+      .sort((a, b) => a.index - b.index)
+      .map(({ line }) => (line.length > 120 ? line.slice(0, 120) + '…' : line));
+    const body = picked.length > 0 ? picked.join('；') : '（这段旧对话以短句/语气词为主）';
+    return [previous.trim(), '用户说过：' + body].filter(Boolean).join('\n').slice(0, 4000);
+  };
+
   /** 与某只宠物对话：截取最近记忆 → 生成回复 → 写入记忆 → 写进 S 的 pets.<id>.say。
    *  供 POST /chat 与 /chat 命令共用（锁内读写，防两端交错写盘）；成功带回回复文本。 */
   const chatWithPet = async (
@@ -176,7 +294,10 @@ export function createChatMemory(deps: ChatMemoryInput) {
       // 窗口可能是秒级，所以这一支真会命中。明确失败：不生成、不写记忆也不写叶子，
       // 否则会在 memory.json 里永久留下一个已删宠物的分桶，外加一只幽灵叶子。
       if (!found) return { ok: false, reason: 'unknown-pet', message: '没有这只桌宠：' + petId };
-      const rounds = memoryRounds(found.conf);
+      const budget = contextBudget(found.conf);
+      const keep = contextKeep(found.conf);
+      const compressAt = contextCompressAt(found.conf);
+      const remindEvery = contextRemindEvery(found.conf);
       // 人设：实例级 whisperPrompt 优先，没写回落所属条目（与碎碎念同一拼装）
       const system = petSystemPrompt(found);
       // 关系状态只进提示词，不改历史；关闭情感时完全跳过。
@@ -200,9 +321,63 @@ export function createChatMemory(deps: ChatMemoryInput) {
         log.error(`[dsh-pet] 记忆结构异常（messages 不是数组）pet=${petId}，按新会话处理：${memoryPath}`);
       }
       const entry = existing && Array.isArray(existing.messages) ? existing : (bucket[petId] = { messages: [] });
-      // rounds = 0（用户关掉历史）→ 空历史；否则截尾部 rounds 轮（1 轮 = 1 问 1 答）。
-      // 不能写 slice(-rounds * 2)：-0 在 JS 里 === 0，slice(-0) 返回整个数组而不是空。
-      const list = sliceMemoryRounds(entry.messages, rounds);
+      const all = entry.messages;
+      let contextState = contextStateOf(entry);
+      const recentCount = Math.min(all.length, keep * 2);
+      const oldEnd = Math.max(0, all.length - recentCount);
+      let summarizedCount = Math.min(contextState.summarizedCount, oldEnd);
+      let summary = contextState.summary;
+      const promptTokens =
+        estimateTokens(systemWithEmotion) +
+        estimateTokens(summary) +
+        estimateMessages(all.slice(summarizedCount)) +
+        estimateTokens(text);
+      if (promptTokens > budget * compressAt && oldEnd > summarizedCount) {
+        const old = all.slice(summarizedCount, oldEnd);
+        const nextSummary = await summarizeOld(summary, old);
+        if (nextSummary) {
+          const saved = estimateTokens(summary) + estimateMessages(old) - estimateTokens(nextSummary);
+          contextState = applyCompression(contextState, nextSummary, oldEnd, saved);
+          summary = nextSummary;
+          summarizedCount = oldEnd;
+          log.info(
+            `[dsh-pet] 上下文已压缩 pet=${petId} 旧消息=${old.length} 压缩次数=${contextState.compressions} 约省=${Math.round(saved)} tokens`,
+          );
+        }
+      }
+      let list = all.slice(summarizedCount);
+      const afterTokens =
+        estimateTokens(systemWithEmotion) + estimateTokens(summary) + estimateMessages(list) + estimateTokens(text);
+      if (afterTokens > budget) {
+        // 压缩失败或摘要仍超预算：退回最近窗口，至少保证这次请求不爆
+        list = all.slice(Math.max(0, all.length - recentCount));
+        log.warn(`[dsh-pet] 上下文仍超预算（${afterTokens}/${budget}），本次仅用最近 ${list.length} 条 pet=${petId}`);
+      }
+      let retrieval = '';
+      if (retrievalEnabled(found.conf) && retrievalTopK(found.conf) > 0 && text.trim().length >= 2) {
+        const archived = await readArchive(archiveDir, found.entry, petId);
+        const oldRaw = all.slice(0, Math.max(0, all.length - recentCount));
+        const hits = bm25Search([...archived, ...oldRaw], text, retrievalTopK(found.conf));
+        const block = retrievalBlock(hits, retrievalMaxChars(found.conf));
+        if (block) {
+          const withRetrieval =
+            estimateTokens(systemWithEmotion) +
+            estimateTokens(summary) +
+            estimateMessages(list) +
+            estimateTokens(block) +
+            estimateTokens(text);
+          if (withRetrieval <= budget) retrieval = block;
+          else log.info(`[dsh-pet] 旧对话检索跳过：会超预算（${withRetrieval}/${budget}）pet=${petId}`);
+        }
+      }
+      const systemWithContext = [systemWithEmotion, summary.trim() ? summaryBlock(summary) : '', retrieval]
+        .filter(Boolean)
+        .join('\n\n');
+      let reminderNote = '';
+      if (shouldRemind(contextState, remindEvery)) {
+        contextState.remindedAt = contextState.compressions;
+        reminderNote = `\n\n（我们已经聊了很久，上下文已压缩 ${contextState.compressions} 次。要不要导出回忆录，或者开个新话题？）`;
+      }
       // 图片只记尺寸与字节数（不记 base64）：模型不支持读图时 dsh-llm 会把它投影成占位文本，靠这行日志定位
       if (image !== undefined) {
         log.info(
@@ -215,7 +390,7 @@ export function createChatMemory(deps: ChatMemoryInput) {
       let lastStreamAt = 0;
       const generated = await generateChat({
         ctx,
-        system: systemWithEmotion,
+        system: systemWithContext,
         history: list,
         userText: text,
         pool,
@@ -253,8 +428,10 @@ export function createChatMemory(deps: ChatMemoryInput) {
           replyText += `\n\n（今日用量已到 ${policy.usage.warnPercent}%：${used}/${policy.usage.dailyLimit} tokens）`;
         }
       }
+      replyText += reminderNote;
       // 图信息只存不送：记忆要能还原「这一轮带过图、配过哪张」（聊天记录存档），
       // 但历史回放一律只带正文——否则每轮都会把旧图重发一遍给模型。
+      entry.context = contextState;
       entry.messages.push({ role: 'user', content: text, ts: now, ...(image ? { image } : {}) });
       entry.messages.push({
         role: 'assistant',
@@ -262,6 +439,7 @@ export function createChatMemory(deps: ChatMemoryInput) {
         ts: now,
         ...(generated.image ? { meme: generated.image } : {}),
       });
+      await archiveIfNeeded(found.entry, petId, entry);
       await writeMemory(mem);
       if (emotionEnabled) {
         const before = await emotion.read(found.entry, petId);
@@ -300,6 +478,8 @@ export function createChatMemory(deps: ChatMemoryInput) {
         const leaf = byPet?.[petId];
         if (kept.length > 0 && leaf !== undefined) {
           leaf.messages = kept;
+          // 摘要可能包含刚被删掉的轮次：删除后重置压缩状态，避免摘要与原文不一致。
+          delete leaf.context;
         } else if (byPet !== undefined) {
           // 清空（或本来就只剩坏数据）：摘掉宠物叶子；条目空了连条目一起摘
           delete byPet[petId];
@@ -336,6 +516,152 @@ export function createChatMemory(deps: ChatMemoryInput) {
     return { ok: true as const, state: next };
   };
 
+  /** 外部读取上下文统计（设置页 / 语音启动时检查），不压缩、不改文件。 */
+  const getContext = async (
+    petId: string,
+  ): Promise<
+    | {
+        ok: true;
+        compressions: number;
+        summarizedCount: number;
+        summary: string;
+        messages: number;
+        tokens: number;
+        budget: number;
+        keepRecentTurns: number;
+      }
+    | { ok: false; reason: 'unknown-pet'; message: string }
+  > => {
+    const cfg = readAllConfig(configPaths);
+    const found = findPetInstance(cfg, petId);
+    if (!found) return { ok: false, reason: 'unknown-pet', message: '没有这只桌宠：' + petId };
+    const mem = await readMemory();
+    const entry = mem[found.entry]?.[petId];
+    const contextState = contextStateOf(entry ?? { messages: [] });
+    const messages = entry?.messages?.length ?? 0;
+    const tokens =
+      estimateTokens(contextState.summary) +
+      estimateMessages((entry?.messages ?? []).slice(contextState.summarizedCount));
+    return {
+      ok: true,
+      compressions: contextState.compressions,
+      summarizedCount: contextState.summarizedCount,
+      summary: contextState.summary,
+      messages,
+      tokens,
+      budget: contextBudget(found.conf),
+      keepRecentTurns: contextKeep(found.conf),
+    };
+  };
+
+  /** 立即压缩：供设置页「立即压缩」与语音启动时调用；没有可压缩内容时不做事。 */
+  const compressContext = async (
+    petId: string,
+  ): Promise<
+    | { ok: true; compressed: boolean; compressions: number; summarizedCount: number; summary: string }
+    | { ok: false; reason: 'unknown-pet' | 'summarize-failed'; message?: string }
+  > =>
+    withMemoryLock(async () => {
+      const cfg = readAllConfig(configPaths);
+      const found = findPetInstance(cfg, petId);
+      if (!found) return { ok: false as const, reason: 'unknown-pet' as const, message: '没有这只桌宠：' + petId };
+      const mem = await readMemory();
+      const bucket =
+        mem[found.entry] && typeof mem[found.entry] === 'object' && !Array.isArray(mem[found.entry])
+          ? mem[found.entry]
+          : (mem[found.entry] = {});
+      const entry = bucket[petId] ?? (bucket[petId] = { messages: [] });
+      const all = entry.messages;
+      const keep = contextKeep(found.conf);
+      const oldEnd = Math.max(0, all.length - keep * 2);
+      let contextState = contextStateOf(entry);
+      const summarizedCount = Math.min(contextState.summarizedCount, oldEnd);
+      if (oldEnd <= summarizedCount) {
+        return {
+          ok: true as const,
+          compressed: false,
+          compressions: contextState.compressions,
+          summarizedCount,
+          summary: contextState.summary,
+        };
+      }
+      const nextSummary = await summarizeOld(contextState.summary, all.slice(summarizedCount, oldEnd));
+      if (!nextSummary) return { ok: false as const, reason: 'summarize-failed' as const };
+      const saved =
+        estimateTokens(contextState.summary) +
+        estimateMessages(all.slice(summarizedCount, oldEnd)) -
+        estimateTokens(nextSummary);
+      contextState = applyCompression(contextState, nextSummary, oldEnd, saved);
+      entry.context = contextState;
+      await writeMemory(mem);
+      log.info(
+        `[dsh-pet] 手动压缩上下文 pet=${petId} 旧消息=${oldEnd - summarizedCount} 压缩次数=${contextState.compressions}`,
+      );
+      return {
+        ok: true as const,
+        compressed: true,
+        compressions: contextState.compressions,
+        summarizedCount: contextState.summarizedCount,
+        summary: contextState.summary,
+      };
+    });
+
+  /** 供语音/外部渠道追加消息：宿主是唯一写者，避免 Python 直接改写 memory.json。 */
+  const appendMessage = async (
+    petId: string,
+    role: 'user' | 'assistant',
+    content: string,
+  ): Promise<{ ok: true } | { ok: false; reason: 'unknown-pet' | 'bad-request'; message: string }> =>
+    withMemoryLock(async () => {
+      const text = content.trim();
+      if (!text || text.length > 8000) {
+        return { ok: false as const, reason: 'bad-request' as const, message: '消息为空或过长' };
+      }
+      const cfg = readAllConfig(configPaths);
+      const found = findPetInstance(cfg, petId);
+      if (!found) return { ok: false as const, reason: 'unknown-pet' as const, message: '没有这只桌宠：' + petId };
+      const mem = await readMemory();
+      const bucket =
+        mem[found.entry] && typeof mem[found.entry] === 'object' && !Array.isArray(mem[found.entry])
+          ? mem[found.entry]
+          : (mem[found.entry] = {});
+      const entry = bucket[petId] ?? (bucket[petId] = { messages: [] });
+      entry.messages.push({ role, content: text, ts: Date.now() });
+      await archiveIfNeeded(found.entry, petId, entry);
+      await writeMemory(mem);
+      return { ok: true as const };
+    });
+
+  /** 语音启动/外部渠道读上下文：摘要 + 最近若干条原文，不直接读 memory.json。 */
+  const readContextForVoice = async (
+    petId: string,
+  ): Promise<
+    | {
+        ok: true;
+        summary: string;
+        messages: ChatMemoryMessage[];
+        compressions: number;
+        summarizedCount: number;
+      }
+    | { ok: false; reason: 'unknown-pet'; message: string }
+  > => {
+    const cfg = readAllConfig(configPaths);
+    const found = findPetInstance(cfg, petId);
+    if (!found) return { ok: false, reason: 'unknown-pet', message: '没有这只桌宠：' + petId };
+    const mem = await readMemory();
+    const entry = mem[found.entry]?.[petId];
+    const state = contextStateOf(entry ?? { messages: [] });
+    const keep = contextKeep(found.conf);
+    const messages = (entry?.messages ?? []).slice(state.summarizedCount).slice(-keep * 2);
+    return {
+      ok: true,
+      summary: state.summary,
+      messages,
+      compressions: state.compressions,
+      summarizedCount: state.summarizedCount,
+    };
+  };
+
   /** 当前活跃宠物 id（会话事件写入，余额与碎念读取）。 */
   const getActivePetId = (): string => activePetId;
 
@@ -351,6 +677,10 @@ export function createChatMemory(deps: ChatMemoryInput) {
     publishWhisper,
     chatWithPet,
     deleteHistory,
+    getContext,
+    compressContext,
+    appendMessage,
+    readContextForVoice,
     getEmotion,
     resetEmotion,
     emotionPath,

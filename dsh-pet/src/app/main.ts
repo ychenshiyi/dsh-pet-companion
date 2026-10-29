@@ -8,6 +8,7 @@
 
 import { createRequire } from 'node:module';
 import { cpSync, copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -151,6 +152,28 @@ async function boot(): Promise<void> {
   const security = createRequestSecurity();
   const ai = createStandaloneAi(dshHomeDir(), logger, {}, petHome);
   const companionStore = createCompanionStore(petHome);
+  const syncContextEnv = (chat: {
+    memoryDir: string;
+    contextBudgetTokens: number;
+    contextKeepRecentTurns: number;
+    contextCompressAt: number;
+    contextRemindEvery: number;
+    archiveMaxMessages: number;
+    retrievalEnabled: boolean;
+    retrievalTopK: number;
+    retrievalMaxChars: number;
+  }): void => {
+    process.env.DSH_PET_CONTEXT_BUDGET = String(chat.contextBudgetTokens);
+    process.env.DSH_PET_CONTEXT_KEEP = String(chat.contextKeepRecentTurns);
+    process.env.DSH_PET_CONTEXT_COMPRESS_AT = String(chat.contextCompressAt);
+    process.env.DSH_PET_CONTEXT_REMIND_EVERY = String(chat.contextRemindEvery);
+    process.env.DSH_PET_ARCHIVE_DIR = join(chat.memoryDir, 'archive');
+    process.env.DSH_PET_ARCHIVE_MAX_MESSAGES = String(chat.archiveMaxMessages);
+    process.env.DSH_PET_RETRIEVAL_ENABLED = chat.retrievalEnabled ? '1' : '0';
+    process.env.DSH_PET_RETRIEVAL_TOPK = String(chat.retrievalTopK);
+    process.env.DSH_PET_RETRIEVAL_MAXCHARS = String(chat.retrievalMaxChars);
+  };
+  syncContextEnv(companionStore.current().chat);
   // 文本与语音共用同一份 memory.json；路径来自设置页的 chat.memoryDir，首次自动迁移旧文件。
   const memoryFile = join(companionStore.current().chat.memoryDir, 'memory.json');
   const legacyMemory = join(petHome, 'memory.json');
@@ -164,6 +187,34 @@ async function boot(): Promise<void> {
   process.env.DSH_PET_EMOTION_ENABLED = companionStore.current().emotion.enabled ? '1' : '0';
   process.env.DSH_PET_USAGE_FILE = join(dirname(memoryFile), 'usage.jsonl');
   process.env.DSH_PET_REMINDER_FILE = join(dirname(memoryFile), 'reminders.json');
+  const transcriptFile = join(dirname(memoryFile), 'voice-transcript.jsonl');
+  process.env.DSH_PET_TRANSCRIPT_FILE = transcriptFile;
+  const readTranscript = async (): Promise<Array<{ role: string; text: string; ts: number }>> => {
+    try {
+      const raw = await readFile(transcriptFile, 'utf8');
+      return raw
+        .split('\n')
+        .slice(-200)
+        .map((line) => {
+          try {
+            const value = JSON.parse(line) as { role?: unknown; text?: unknown; ts?: unknown };
+            if (
+              (value.role === 'user' || value.role === 'assistant') &&
+              typeof value.text === 'string' &&
+              Number.isFinite(Number(value.ts))
+            ) {
+              return { role: value.role, text: value.text, ts: Number(value.ts) };
+            }
+          } catch {
+            /* 坏行跳过 */
+          }
+          return undefined;
+        })
+        .filter((item): item is { role: string; text: string; ts: number } => item !== undefined);
+    } catch {
+      return [];
+    }
+  };
   // 语音开关状态（主进程唯一真源；变化时广播给所有桌宠窗，菜单右侧 ✓ 用它）
   let voiceWindow: VoiceWindow | undefined;
   let voiceOn = false;
@@ -200,6 +251,7 @@ async function boot(): Promise<void> {
       agentRoot: process.env.DSH_PET_AGENT_ROOT,
       meloDir: join(process.env.DSH_PET_AGENT_ROOT ?? packageRoot, 'models', 'melo-tts'),
     },
+    readTranscript,
     info: () => {
       const current = status(port) as { version?: string; pets?: Array<{ id: string; name: string; display: string }> };
       return {
@@ -228,6 +280,7 @@ async function boot(): Promise<void> {
   port = server.port;
   const origin = `http://127.0.0.1:${port}`;
   log(`本机服务 ${origin}`);
+  supervisor.setHost(origin, security.token);
 
   // 隐藏语音窗：麦克风/音频都在这里，桌宠窗只负责显示。
   let settingsWindow: VoiceWindow | undefined;
@@ -263,6 +316,24 @@ async function boot(): Promise<void> {
         ? String((payload as { tab: string }).tab)
         : '';
     void openSettingsWindow(tab);
+  });
+
+  // 语音对话气泡：不是独立窗口；开关状态广播给桌宠窗，由 PetSprite 在右侧渲染。
+  let transcriptOn = false;
+  const broadcastTranscript = (): void => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      try {
+        if (!win.isDestroyed()) win.webContents.send('pet:transcript-status', { on: transcriptOn });
+      } catch {
+        /* 窗口正在销毁 */
+      }
+    }
+  };
+  ipcMain.handle('pet:transcript-status', () => ({ on: transcriptOn }));
+  ipcMain.handle('pet:transcript-data', () => readTranscript());
+  ipcMain.on('pet:transcript-toggle', () => {
+    transcriptOn = !transcriptOn;
+    broadcastTranscript();
   });
   const openVoice = async (): Promise<void> => {
     if (voiceOn) return;

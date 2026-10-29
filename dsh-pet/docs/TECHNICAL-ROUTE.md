@@ -42,8 +42,8 @@
 | 离线 TTS  | MeloTTS zh_en                       | sherpa-onnx VITS，模型约 170MB            |
 | 在线 TTS  | Edge TTS                            | `zh-CN-XiaoxiaoNeural`，失败回退 Melo     |
 | LLM       | DeepSeek / OpenAI 兼容 / Anthropic  | `ctx.llm` 统一抽象；默认 `deepseek-flash` |
-| 记忆/情感 | JSON 文件                           | 无数据库，原子替换、单写者                |
-| 测试      | Node test + Playwright（人工/脚本） | `pnpm test` 1519 passed                   |
+| 记忆/情感 | JSON 文件                           | 无数据库，原子替换、宿主单写者            |
+| 测试      | Node test + Playwright（人工/脚本） | `pnpm test` 1528 passed                   |
 
 ---
 
@@ -108,8 +108,10 @@ main-config.jsonc        原桌宠配置（pets/动画/物理）
 companion.json           伴侣设置（不含密钥）
 companion-secrets.json   API Key / LiveKit secret（ACL 当前用户）
 memory.json              迁移前旧记忆（保留）
-conversations/memory.json  文本+语音共用对话
+conversations/memory.json  文本+语音共用对话 + context
+conversations/archive/     超出 memory 上限的旧原话（JSONL，滚动归档）
 conversations/emotion.json 关系/心情/事实/情节/成长日志
+conversations/voice-transcript.jsonl 语音对话框文本
 conversations/usage.jsonl  文本/语音用量
 conversations/reminders.json 提醒
 livekit.yaml / livekit-keys.json 运行时生成
@@ -126,10 +128,45 @@ logs.txt / app.out.log   日志
         { "role": "user", "content": "...", "ts": 1700000000000 },
         { "role": "assistant", "content": "...", "ts": 1700000000000 },
       ],
+      "context": {
+        "summary": "旧对话的滚动摘要…",
+        "summarizedCount": 24,
+        "compressions": 2,
+        "lastCompressedAt": 1700000000000,
+        "tokensSaved": 1800,
+        "remindedAt": 0,
+      },
     },
   },
 }
 ```
+
+- `messages` 永远是全文归档，压缩不删除
+- `context.summary` 是进入 prompt 的旧对话摘要；`summarizedCount` 指向已汇总的前缀
+- 最近 `contextKeepRecentTurns` 轮始终保留原文
+- 不同宠物按 `entry/pet` 分桶，上下文互不共享
+
+### 上下文压缩
+
+```
+每轮读 memory
+→ 预算 = contextBudgetTokens；阈值 = 预算 × contextCompressAt
+→ 超过阈值：把 [summarizedCount, len-keep*2) 交给 LLM 摘要
+→ 更新 summary/summarizedCount/compressions
+→ prompt = 人设 + 情感 + summary + 最近原文 + BM25 旧对话片段
+```
+
+- LLM 失败退回抽取式摘要，不中断对话
+- 达到 `contextRemindEvery` 次压缩时，回复尾部提醒导出回忆录/开新话题
+- 语音 Agent 启动时通过宿主 `POST /dsh-pet-7340/context` 触发同一套压缩，再读取同一份
+  `summary` + 最近轮，保证文本/语音同源
+- 压缩参数由设置页保存到 `companion.json`，宿主通过环境变量读取
+- `memory.json` 单宠超过 `archiveMaxMessages` 条时，旧原话滚动写入 `conversations/archive/`；
+  归档不参与 prompt
+- P3 检索：对归档 + 近期旧消息做本地 BM25（中文单字/二元组），取 `retrievalTopK` 条拼进
+  `【可能相关的旧对话】`；预算不足时跳过，不调外部 API
+- 语音单写：Agent 不直接写 memory，只调用 `POST /memory/append`；启动读
+  `GET /memory/context`，宿主是唯一写者
 
 ### emotion.json
 
@@ -156,9 +193,13 @@ logs.txt / app.out.log   日志
 ### 写入策略
 
 - 单文件写：临时文件 + `rename` 原子替换
-- 单写者优先：host 是 memory 的唯一写者；语音侧 emotion 直写（极小概率竞争，下一轮补）
-- 文本/语音共用同一份；语音启动读最近 N 轮
-- 记忆窗口按轮截断；开头孤立的 assistant 会被裁掉（独立 AI 适配器要求首条 user）
+- **宿主单写者**：文本宿主与语音都经宿主的串行队列写 `memory.json`；语音不再直接改文件，
+  只调用 `POST /memory/append`、`GET /memory/context`
+- 文本/语音共用同一份 `memory.json` 与同一份 `context.summary`；语音启动会触发宿主压缩
+- 不同宠物按 entry/pet 分桶，各自独立上下文与归档
+- `memory.json` 单宠超过 `archiveMaxMessages` 条时，最早的原话移到 `conversations/archive/`；
+  归档只追加，不参与 prompt
+- 开头孤立的 assistant 会被裁掉（独立 AI 适配器要求首条 user）
 
 ---
 
@@ -193,6 +234,11 @@ logs.txt / app.out.log   日志
   → 字幕写 say；emotion/usage 写文件
 关闭 → 语音窗关闭 → supervisor 杀 Agent/LiveKit
 ```
+
+**语音对话气泡**（右键「显示语音对话框」）：Agent 在 `on_item` 把 user/assistant 文本追加到
+`voice-transcript.jsonl`；主进程通过 IPC `pet:transcript-data` 把最新文本给桌宠渲染端，
+`PetSprite` 在宠物右侧的独立 DOM 面板里渲染左右气泡（600ms 轮询），**不占用原 whisper 槽**。
+开启时临时加宽窗口右余量，关闭还原。开关经 `pet:transcript-status` 广播，菜单 ✓ 来自主进程真实状态。
 
 ### 5.4 唤醒词
 

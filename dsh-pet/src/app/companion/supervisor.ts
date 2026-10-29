@@ -70,6 +70,8 @@ export class VoiceSupervisor {
   private idleTimer?: ReturnType<typeof setTimeout>;
   private logTail: string[] = [];
   private readonly onAutoStop?: () => void;
+  private hostUrl = '';
+  private hostToken = '';
 
   constructor(store: CompanionStore, log: (message: string) => void, onAutoStop?: () => void) {
     this.store = store;
@@ -91,6 +93,12 @@ export class VoiceSupervisor {
 
   private settings(): CompanionSettings {
     return this.store.current();
+  }
+
+  /** 宿主地址/令牌：语音 Agent 启动时用它触发上下文压缩（与文本共用同一份 memory.json）。 */
+  setHost(url: string, token: string): void {
+    this.hostUrl = url;
+    this.hostToken = token;
   }
 
   private loadKeys(): LiveKitKeys {
@@ -150,14 +158,20 @@ export class VoiceSupervisor {
       STT_LANGUAGE: settings.voice.sttLanguage,
       WAKE_WORD: settings.voice.wakeWord,
       WAKE_IDLE_SECONDS: String(settings.voice.wakeIdleSeconds),
+      VOICE_LOW_LATENCY: settings.voice.lowLatency === false ? '0' : '1',
       AGENT_ROOM_PREFIX: settings.livekit.room,
       DSH_PET_MEMORY_FILE: join(settings.chat.memoryDir, 'memory.json'),
       DSH_PET_EMOTION_FILE: join(settings.chat.memoryDir, 'emotion.json'),
       DSH_PET_EMOTION_ENABLED: settings.emotion.enabled ? '1' : '0',
       DSH_PET_USAGE_FILE: join(settings.chat.memoryDir, 'usage.jsonl'),
+      DSH_PET_TRANSCRIPT_FILE: join(settings.chat.memoryDir, 'voice-transcript.jsonl'),
       DSH_PET_MEMORY_ENTRY: 'main',
-      DSH_PET_MEMORY_PET: 'main',
+      DSH_PET_MEMORY_PET: settings.voice.activePetId,
       DSH_PET_MEMORY_ROUNDS: String(settings.chat.rounds),
+      DSH_PET_CONTEXT_BUDGET: String(settings.chat.contextBudgetTokens),
+      DSH_PET_CONTEXT_KEEP: String(settings.chat.contextKeepRecentTurns),
+      DSH_PET_HOST_URL: this.hostUrl,
+      DSH_PET_TOKEN: this.hostToken,
       PYTHONUNBUFFERED: '1',
     };
   }

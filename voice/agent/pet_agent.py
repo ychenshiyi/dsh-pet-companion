@@ -14,6 +14,9 @@ from livekit.agents import tts as tts_api
 from livekit.agents.llm import ChatContext
 from livekit.plugins import openai, silero
 
+from .context_client import append as append_host_memory
+from .context_client import compress as compress_host_context
+from .context_client import read_context as read_host_context
 from .emotion import EmotionStore
 from .emotion import prompt as emotion_prompt
 from .memory import MemoryStore
@@ -37,6 +40,7 @@ from .settings import (
     TTS_ENGINE,
 )
 from .stt_sensevoice import SenseVoiceSTT
+from .transcript import append as append_transcript
 from .tts_emotional import EmotionalTTS
 from .usage import record as record_usage
 from .wake_gate import WakeGate
@@ -113,44 +117,70 @@ async def entrypoint(ctx: JobContext) -> None:
     def on_voice_emotion(tag: str) -> None:
         voice_emotion["tag"] = tag
 
+    # 低延迟模式：更积极端点/更短回复/启动预热 STT；设置页可关闭。
+    low_latency = os.environ.get("VOICE_LOW_LATENCY", "1") != "0"
+    stt = SenseVoiceSTT(
+        model_path=SENSEVOICE_MODEL,
+        tokens_path=SENSEVOICE_TOKENS,
+        language=STT_LANGUAGE,
+        text_filter=wake_gate.filter,
+        emotion_sink=on_voice_emotion,
+    )
+    if low_latency:
+        stt.warmup()
     session = AgentSession(
-        vad=silero.VAD.load(min_silence_duration=0.30, min_speech_duration=0.10),
-        stt=SenseVoiceSTT(
-            model_path=SENSEVOICE_MODEL,
-            tokens_path=SENSEVOICE_TOKENS,
-            language=STT_LANGUAGE,
-            text_filter=wake_gate.filter,
-            emotion_sink=on_voice_emotion,
+        vad=silero.VAD.load(
+            min_silence_duration=0.20 if low_latency else 0.30,
+            min_speech_duration=0.10,
         ),
+        stt=stt,
         llm=openai.LLM(
             model=DEEPSEEK_MODEL,
             base_url=DEEPSEEK_BASE_URL,
             api_key=DEEPSEEK_API_KEY,
             temperature=0.7,
-            max_completion_tokens=120,
+            max_completion_tokens=80 if low_latency else 120,
         ),
         tts=create_tts(),
         # 本机自托管没有 LiveKit Cloud 的 turn-detector / 自适应打断服务：
         # 明确用本地 VAD 判定轮次与打断，避免每次会话先等云端超时
         turn_handling={
             "turn_detection": "vad",
-            "endpointing": {"min_delay": 0.35, "max_delay": 2.0},
+            "endpointing": {
+                "min_delay": 0.20 if low_latency else 0.35,
+                "max_delay": 1.0 if low_latency else 2.0,
+            },
             "interruption": {"mode": "vad", "min_duration": 0.3},
         },
     )
 
     await ctx.connect()
 
-    # 与文本对话共享同一份 memory.json：启动时带最近若干轮，回合结束写回
+    # 宿主是 memory 唯一写者：启动时先让宿主压缩，再通过 HTTP 读摘要 + 最近轮。
     memory = MemoryStore()
+    summary = memory.load_summary()
+    compressed_summary = compress_host_context(memory.pet)
+    if compressed_summary:
+        summary = compressed_summary
+    remote_context = read_host_context(memory.pet)
+    if remote_context:
+        summary = str(remote_context.get("summary") or summary)
+        messages = remote_context.get("messages")
+        recent_messages = messages if isinstance(messages, list) else []
+    else:
+        recent_messages = memory.load()
     chat_ctx = ChatContext.empty()
-    for message in memory.load():
+    for message in recent_messages:
+        if not isinstance(message, dict):
+            continue
         chat_ctx.add_message(role=message.get("role", "user"), content=str(message.get("content", "")))
 
     # 情感状态：启动时读一次注入提示词，回合结束更新（与宿主共用 emotion.json）
     emotion = EmotionStore()
     emotion_state = emotion.read()
     instructions = INSTRUCTIONS + (f"\n\n【{PET_NAME}的补充人设】\n{PET_PERSONA}" if PET_PERSONA.strip() else "")
+    if summary:
+        instructions += "\n\n【长期对话摘要】\n" + summary
     instructions += "\n\n" + emotion_prompt(emotion_state) if emotion.enabled else ""
     last_user_text = ""
 
@@ -166,7 +196,14 @@ async def entrypoint(ctx: JobContext) -> None:
         role = getattr(item, "role", None)
         text = getattr(item, "text_content", None)
         if role in ("user", "assistant") and text:
-            memory.append(role, text)
+            try:
+                append_host_memory(memory.pet, role, text)
+            except Exception as error:  # noqa: BLE001
+                logger.warning("宿主记忆写入失败：%s", error)
+            try:
+                append_transcript(role, text)
+            except Exception as error:  # noqa: BLE001
+                logger.warning("语音对话记录失败：%s", error)
         if role == "user" and text:
             last_user_text = text
         elif role == "assistant" and text and last_user_text:

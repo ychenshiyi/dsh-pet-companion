@@ -142,6 +142,44 @@ export interface PetRouteDeps {
   readonly resetEmotion: (
     petId: string,
   ) => Promise<{ ok: true; state: EmotionState } | { ok: false; reason: 'unknown-pet'; message: string }>;
+  /** 上下文统计（摘要/压缩次数/估算 token）。 */
+  readonly getContext: (petId: string) => Promise<
+    | {
+        ok: true;
+        compressions: number;
+        summarizedCount: number;
+        summary: string;
+        messages: number;
+        tokens: number;
+        budget: number;
+        keepRecentTurns: number;
+      }
+    | { ok: false; reason: 'unknown-pet'; message: string }
+  >;
+  /** 立即压缩某只宠物的旧上下文。 */
+  readonly compressContext: (
+    petId: string,
+  ) => Promise<
+    | { ok: true; compressed: boolean; compressions: number; summarizedCount: number; summary: string }
+    | { ok: false; reason: 'unknown-pet' | 'summarize-failed'; message?: string }
+  >;
+  /** 外部渠道（语音）追加消息：宿主唯一写者。 */
+  readonly appendMessage: (
+    petId: string,
+    role: 'user' | 'assistant',
+    content: string,
+  ) => Promise<{ ok: true } | { ok: false; reason: 'unknown-pet' | 'bad-request'; message: string }>;
+  /** 语音启动读取摘要 + 最近原文。 */
+  readonly readContextForVoice: (petId: string) => Promise<
+    | {
+        ok: true;
+        summary: string;
+        messages: ChatMemoryMessage[];
+        compressions: number;
+        summarizedCount: number;
+      }
+    | { ok: false; reason: 'unknown-pet'; message: string }
+  >;
   /** 用量账本。 */
   readonly usage: UsageStore;
   /** 提醒/日程。 */

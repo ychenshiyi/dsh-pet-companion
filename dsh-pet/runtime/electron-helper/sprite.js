@@ -71,6 +71,13 @@ class PetSprite {
     const fontConf = pet.font || config.font || S.DEFAULT_FONT;
     this.margin = { t: Math.max(m, S.bubbleTopMarginPx(fontConf, this.size)), r: m, b: m, l: m };
     window.__dshPetDebug.winMargin = this.margin;
+    // 语音对话气泡：独立 DOM 挂在宠物右侧，不占 whisper 槽；开启时临时加宽窗口右余量。
+    this.baseMarginR = this.margin.r;
+    this.voiceChatOn = false;
+    this.voiceChatEl = null;
+    this.voiceChatList = null;
+    this.voiceChatTimer = null;
+    this.voiceChatKey = '';
     // 宠物包围盒左上角在【工作区】坐标系里的位置（本窗口的位置 = 宠物的位置）
     this.pos = { x: 0, y: 0 };
 
@@ -296,5 +303,115 @@ class PetSprite {
     const h = vy1 - vy0;
     if (w < 40 || h < 40) return null;
     return { x: vx0 - winX, y: vy0 - winY, w, h };
+  }
+
+  /**
+   * 语音对话气泡开关：开启时在宠物右侧加一块独立气泡面板，并临时加宽窗口右余量。
+   * 不写 whisper 槽，因此不会覆盖碎碎念/任务气泡；用户话在右、宠物话在左。
+   */
+  setVoiceChat(on) {
+    const next = !!on;
+    if (next === this.voiceChatOn || !this.el) return;
+    this.voiceChatOn = next;
+    if (next) {
+      if (!this.voiceChatEl) this.buildVoiceChat();
+      this.voiceChatEl.style.display = 'flex';
+      // 贴住「宠物身体」右缘，而不是整块舞台画布右缘；画布两侧有大量透明区。
+      this.margin.r = Math.max(this.baseMarginR, this.hitRect.x + this.hitRect.w - this.size + 314);
+      this.sendBounds(this.pos.x, this.pos.y);
+      void this.refreshVoiceChat();
+      this.voiceChatTimer = window.setInterval(() => void this.refreshVoiceChat(), 600);
+    } else {
+      if (this.voiceChatEl) this.voiceChatEl.style.display = 'none';
+      this.margin.r = this.baseMarginR;
+      this.sendBounds(this.pos.x, this.pos.y);
+      if (this.voiceChatTimer !== null) {
+        window.clearInterval(this.voiceChatTimer);
+        this.voiceChatTimer = null;
+      }
+    }
+  }
+
+  buildVoiceChat() {
+    const panel = document.createElement('div');
+    panel.className = 'pet-voice-chat';
+    const bodyRight = this.hitRect.x + this.hitRect.w;
+    panel.style.cssText = [
+      'position:absolute',
+      'left:' + (bodyRight + 14) + 'px',
+      'top:8px',
+      'width:300px',
+      'max-height:min(360px, calc(100vh - 24px))',
+      'display:none',
+      'flex-direction:column',
+      'gap:8px',
+      'padding:10px',
+      'border:1px solid rgba(150,170,190,.55)',
+      'border-radius:14px',
+      'background:rgba(247,251,255,.96)',
+      'box-shadow:0 8px 24px rgba(30,50,80,.18)',
+      'pointer-events:none',
+      'z-index:2',
+    ].join(';');
+    const head = document.createElement('div');
+    head.textContent = '语音对话';
+    head.style.cssText = 'font-size:11px;color:#6b7a89;letter-spacing:.04em;flex:0 0 auto';
+    const list = document.createElement('div');
+    list.style.cssText = 'display:flex;flex-direction:column;gap:7px;overflow:auto;min-height:80px';
+    panel.append(head, list);
+    this.el.appendChild(panel);
+    this.voiceChatEl = panel;
+    this.voiceChatList = list;
+    this.voiceChatKey = '';
+  }
+
+  async refreshVoiceChat() {
+    if (!this.voiceChatOn || !window.petBridge || typeof window.petBridge.getTranscript !== 'function') return;
+    let messages;
+    try {
+      messages = await window.petBridge.getTranscript();
+    } catch {
+      return;
+    }
+    if (!this.voiceChatOn || !this.voiceChatList) return;
+    const recent = Array.isArray(messages) ? messages.slice(-30) : [];
+    const key = recent.map((m) => m.ts + ':' + m.role + ':' + m.text).join('|');
+    if (key === this.voiceChatKey) return;
+    this.voiceChatKey = key;
+    const list = this.voiceChatList;
+    list.innerHTML = '';
+    if (recent.length === 0) {
+      const empty = document.createElement('div');
+      empty.textContent = '开始语音对话后，这里会实时显示。';
+      empty.style.cssText = 'font-size:12px;color:#8a9aaa;line-height:1.6;padding:6px 2px';
+      list.appendChild(empty);
+      return;
+    }
+    for (const message of recent) {
+      const row = document.createElement('div');
+      const isUser = message.role === 'user';
+      row.style.cssText =
+        'display:flex;gap:6px;align-items:flex-end;max-width:94%;' +
+        (isUser ? 'align-self:flex-end;flex-direction:row-reverse' : 'align-self:flex-start');
+      const who = document.createElement('span');
+      who.textContent = isUser ? '你' : '桌宠';
+      who.style.cssText = 'font-size:10px;color:#8a9aaa;flex:0 0 auto;padding-bottom:2px';
+      const bubble = document.createElement('div');
+      bubble.textContent = message.text;
+      bubble.style.cssText = [
+        'font-size:12px',
+        'line-height:1.55',
+        'padding:6px 9px',
+        'border-radius:11px',
+        'white-space:pre-wrap',
+        'word-break:break-word',
+        isUser
+          ? 'background:#1f6feb;color:#fff;border:1px solid #1f6feb;border-bottom-right-radius:3px'
+          : 'background:#fff;color:#1f2d3a;border:1px solid #d8e1ea;border-bottom-left-radius:3px',
+      ].join(';');
+      row.append(who, bubble);
+      list.appendChild(row);
+    }
+    list.scrollTop = list.scrollHeight;
   }
 }

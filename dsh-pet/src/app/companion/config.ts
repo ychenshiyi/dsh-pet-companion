@@ -65,11 +65,27 @@ const voiceSchema = z.object({
   /** 语音对话代表哪只宠物（多宠物音色/人设）。 */
   activePetId: z.string().max(64).optional().default('main'),
   activePetName: z.string().max(64).optional().default('小鱼'),
+  /** 低延迟模式：更积极的 VAD/端点、更短回复、启动预热 STT。 */
+  lowLatency: z.boolean().optional().default(true),
 });
 
 const chatSchema = z.object({
   memoryDir: z.string().max(1024),
   rounds: z.number().int().min(0).max(50),
+  /** 上下文 token 预算；超出后压缩旧对话。 */
+  contextBudgetTokens: z.number().int().min(1500).max(32000).optional().default(6000),
+  /** 达到预算的该比例时触发压缩。 */
+  contextCompressAt: z.number().min(0.5).max(0.95).optional().default(0.75),
+  /** 对话窗口始终保留的最近轮数（1 轮 = 1 问 1 答）。 */
+  contextKeepRecentTurns: z.number().int().min(2).max(20).optional().default(6),
+  /** 每累计多少次压缩提醒一次；0 = 关闭。 */
+  contextRemindEvery: z.number().int().min(0).max(100).optional().default(5),
+  /** memory.json 单只宠物最多保留多少条原文，超出移到 archive。 */
+  archiveMaxMessages: z.number().int().min(100).max(20000).optional().default(2000),
+  /** P3：BM25 检索旧对话。 */
+  retrievalEnabled: z.boolean().optional().default(true),
+  retrievalTopK: z.number().int().min(0).max(10).optional().default(3),
+  retrievalMaxChars: z.number().int().min(200).max(4000).optional().default(1200),
 });
 
 const livekitSchema = z.object({
@@ -206,8 +222,20 @@ function defaultSettings(petHome: string): CompanionSettings {
       wakeIdleSeconds: 10,
       activePetId: 'main',
       activePetName: '小鱼',
+      lowLatency: true,
     },
-    chat: { memoryDir: join(petHome, 'conversations'), rounds: 10 },
+    chat: {
+      memoryDir: join(petHome, 'conversations'),
+      rounds: 10,
+      contextBudgetTokens: 6000,
+      contextCompressAt: 0.75,
+      contextKeepRecentTurns: 6,
+      contextRemindEvery: 5,
+      archiveMaxMessages: 2000,
+      retrievalEnabled: true,
+      retrievalTopK: 3,
+      retrievalMaxChars: 1200,
+    },
     livekit: { mode: 'embedded', port: 7880, room: 'pet-room', url: 'ws://127.0.0.1:7880' },
     emotion: { enabled: true, proactive: false },
     usage: { dailyLimit: 0, warnPercent: 80, pricePer1k: 0 },

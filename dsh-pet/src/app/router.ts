@@ -77,6 +77,8 @@ export function startRouter(
               '/companion/voice/': [companion.voicePage, 'text/html'],
               '/companion/voice.js': [companion.voiceScript, 'text/javascript'],
               '/companion/voice/livekit-client.umd.js': [companion.voiceClient, 'text/javascript'],
+              '/companion/transcript/': [companion.transcriptPage, 'text/html'],
+              '/companion/transcript.js': [companion.transcriptScript, 'text/javascript'],
             }
           : {}),
       };
@@ -117,6 +119,10 @@ export function startRouter(
       }
       if (companion && url.pathname === '/companion/voice/preview') {
         await companion.voicePreview(request, res);
+        return;
+      }
+      if (companion && url.pathname === '/companion/voice/transcript') {
+        await companion.voiceTranscript(request, res);
         return;
       }
       if (companion && url.pathname === '/companion/voice/token') {

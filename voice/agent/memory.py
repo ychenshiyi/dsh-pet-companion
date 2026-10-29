@@ -71,6 +71,19 @@ class MemoryStore:
             else []
         )
 
+    def load_summary(self) -> str:
+        """读取与文本宿主共用的压缩摘要；没有就返回空串。"""
+        if not self.enabled:
+            return ""
+        with self._lock:
+            data = self._read()
+        try:
+            context = data[self.entry][self.pet].get("context")
+            summary = context.get("summary") if isinstance(context, dict) else ""
+            return summary.strip() if isinstance(summary, str) else ""
+        except Exception:
+            return ""
+
     def append(self, role: str, text: str) -> None:
         if not self.enabled or not text.strip() or role not in ("user", "assistant"):
             return

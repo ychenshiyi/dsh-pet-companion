@@ -39,6 +39,9 @@ export interface CompanionHandlers {
   voiceClient: (req: IncomingMessage, res: ServerResponse) => void;
   voices: (req: IncomingMessage, res: ServerResponse) => void;
   voicePreview: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+  transcriptPage: (req: IncomingMessage, res: ServerResponse) => void;
+  transcriptScript: (req: IncomingMessage, res: ServerResponse) => void;
+  voiceTranscript: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -88,9 +91,10 @@ export function createCompanionHandlers(deps: {
   closeVoice: () => Promise<void>;
   stopVoice: () => Promise<void>;
   runtime: { python?: string; agentRoot?: string; meloDir: string };
+  readTranscript: () => Promise<Array<{ role: string; text: string; ts: number }>>;
   info: () => CompanionInfo;
 }): CompanionHandlers {
-  const { store, ai, supervisor, voiceDir, openVoice, closeVoice, stopVoice, runtime, info } = deps;
+  const { store, ai, supervisor, voiceDir, openVoice, closeVoice, stopVoice, runtime, readTranscript, info } = deps;
 
   const voiceAsset =
     (name: string, type: string) =>
@@ -160,6 +164,15 @@ export function createCompanionHandlers(deps: {
       }
       try {
         const saved = store.save(body);
+        process.env.DSH_PET_CONTEXT_BUDGET = String(saved.chat.contextBudgetTokens);
+        process.env.DSH_PET_CONTEXT_KEEP = String(saved.chat.contextKeepRecentTurns);
+        process.env.DSH_PET_CONTEXT_COMPRESS_AT = String(saved.chat.contextCompressAt);
+        process.env.DSH_PET_CONTEXT_REMIND_EVERY = String(saved.chat.contextRemindEvery);
+        process.env.DSH_PET_ARCHIVE_DIR = `${saved.chat.memoryDir}/archive`;
+        process.env.DSH_PET_ARCHIVE_MAX_MESSAGES = String(saved.chat.archiveMaxMessages);
+        process.env.DSH_PET_RETRIEVAL_ENABLED = saved.chat.retrievalEnabled ? '1' : '0';
+        process.env.DSH_PET_RETRIEVAL_TOPK = String(saved.chat.retrievalTopK);
+        process.env.DSH_PET_RETRIEVAL_MAXCHARS = String(saved.chat.retrievalMaxChars);
         // 专注模式 + 静音：保存后立即关闭语音，避免“开了专注还在说话”
         if (saved.focus.enabled && saved.focus.muteVoice) await closeVoice();
       } catch (error) {
@@ -272,6 +285,8 @@ export function createCompanionHandlers(deps: {
     voicePage: voiceAsset('voice.html', 'text/html'),
     voiceScript: voiceAsset('voice.js', 'text/javascript'),
     voiceClient: voiceAsset('livekit-client.umd.js', 'text/javascript'),
+    transcriptPage: voiceAsset('transcript.html', 'text/html'),
+    transcriptScript: voiceAsset('transcript.js', 'text/javascript'),
     voices(_req, res) {
       sendJson(res, 200, {
         edge: EDGE_VOICES,
@@ -325,6 +340,13 @@ export function createCompanionHandlers(deps: {
       } catch (error) {
         sendJson(res, 500, { error: error instanceof Error ? error.message : '试听失败' });
       }
+    },
+    async voiceTranscript(req, res) {
+      if (req.method !== 'GET') {
+        sendJson(res, 405, { error: '仅支持 GET' });
+        return;
+      }
+      sendJson(res, 200, { ok: true, messages: await readTranscript() });
     },
     async voiceOpen(req, res) {
       if (req.method !== 'POST') {

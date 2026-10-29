@@ -63,6 +63,19 @@ contextBridge.exposeInMainWorld('petBridge', {
   getVoiceStatus() {
     return ipcRenderer.invoke('pet:voice-status');
   },
+  /** 语音对话框开关：独立窗口，右侧 ✓ 表示已打开。 */
+  toggleTranscript() {
+    ipcRenderer.send('pet:transcript-toggle');
+  },
+  onTranscriptStatus(cb) {
+    ipcRenderer.on('pet:transcript-status', (_e, payload) => cb(payload));
+  },
+  getTranscriptStatus() {
+    return ipcRenderer.invoke('pet:transcript-status');
+  },
+  getTranscript() {
+    return ipcRenderer.invoke('pet:transcript-data');
+  },
   /** 气泡快捷回复：由主进程带令牌调用宿主 /chat。 */
   quickChat(petId, text) {
     return ipcRenderer.invoke('pet:quick-chat', { petId, text });

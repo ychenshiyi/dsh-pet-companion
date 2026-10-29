@@ -48,6 +48,8 @@ function publicRead(req: IncomingMessage): boolean {
       '/companion/voice/',
       '/companion/voice.js',
       '/companion/voice/livekit-client.umd.js',
+      '/companion/transcript/',
+      '/companion/transcript.js',
     ].includes(path) || /^\/dsh-pet-\d+\//.test(path)
   );
 }

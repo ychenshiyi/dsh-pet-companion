@@ -56,6 +56,7 @@ export const companionPage = `<!doctype html>
       <div><label>识别语言</label><input id="v-sttLanguage" placeholder="zh" /></div>
       <div><label>唤醒词</label><input id="v-wakeWord" maxlength="16" placeholder="小鱼" /></div>
       <div><label>空闲多久后需要唤醒（秒）</label><input id="v-wakeIdle" type="number" min="3" max="120" step="1" /></div>
+      <div><label><input type="checkbox" id="v-lowLatency" /> 低延迟模式</label><p class="hint">更积极的端点、更短回复、启动预热识别；可能更容易截断长句。</p></div>
     </div>
     <label>试听文本</label><textarea id="v-text" rows="2" maxlength="200" style="width:100%;border:1px solid #b9c8d6;border-radius:8px;padding:8px 11px;font:inherit">主人，我在呢。今天想聊点什么呀？</textarea>
     <p class="hint">语音常开：开启后可直接说话；超过空闲秒数没对话，下一句需要先说唤醒词（默认「小鱼」）。</p>
@@ -68,8 +69,19 @@ export const companionPage = `<!doctype html>
 <section data-panel="chat" class="panel">
   <div class="card"><h2>对话与上下文</h2>
     <label>上下文存储目录</label><input id="c-memoryDir" spellcheck="false" />
-    <label>每次携带最近轮数（0–50）</label><input id="c-rounds" type="number" min="0" max="50" step="1" />
-    <p class="hint">文本与语音共用 <code>&lt;目录&gt;/memory.json</code>；首次会自动迁移旧文件。修改目录后需重启应用生效。</p>
+    <label>每次携带最近轮数（0–50，旧版兜底）</label><input id="c-rounds" type="number" min="0" max="50" step="1" />
+    <div class="grid2">
+      <div><label>上下文预算（tokens）</label><input id="c-budget" type="number" min="1500" max="32000" step="500" /></div>
+      <div><label>触发压缩比例（%）</label><input id="c-compressAt" type="number" min="50" max="95" step="5" /></div>
+      <div><label>始终保留最近轮数</label><input id="c-keep" type="number" min="2" max="20" step="1" /></div>
+      <div><label>每压缩多少次提醒</label><input id="c-remind" type="number" min="0" max="100" step="1" /></div>
+      <div><label>全文保留条数（超出归档）</label><input id="c-archive" type="number" min="100" max="20000" step="100" /></div>
+      <div><label>旧对话检索条数（0=关）</label><input id="c-retrieval" type="number" min="0" max="10" step="1" /></div>
+    </div>
+    <p class="hint">检索使用本地 BM25，读取归档旧对话；不额外调用 API。</p>
+    <p class="hint" id="c-context-stats">上下文统计读取中…</p>
+    <div class="row"><button id="c-compress-now" type="button" class="ghost">立即压缩</button><span id="c-context-state" class="note"></span></div>
+    <p class="hint">文本与语音共用 <code>&lt;目录&gt;/memory.json</code>；超出预算会把旧对话压成摘要，原文仍保留在文件中。修改目录后需重启应用生效。</p>
   </div>
 </section>
 
@@ -641,6 +653,39 @@ export const companionScript = `
     $('pet-persona').value = override.persona || '';
   }
 
+  async function loadContextStats() {
+    try {
+      const res = await fetch('/dsh-pet-7340/context?pet=' + encodeURIComponent(statePetId), {
+        headers: { 'X-DSH-Pet-Token': token },
+        cache: 'no-store',
+      });
+      const body = await res.json();
+      if (!body.ok) throw new Error(body.message || body.error || '读取失败');
+      $('c-context-stats').textContent =
+        '已保存 ' + body.messages + ' 条 · 当前上下文约 ' + body.tokens + '/' + body.budget + ' tokens · ' +
+        '已压缩 ' + body.compressions + ' 次 · 摘要 ' + body.summarizedCount + ' 条';
+    } catch (error) {
+      $('c-context-stats').textContent = '上下文统计读取失败：' + error.message;
+    }
+  }
+
+  async function compressContextNow() {
+    $('c-context-state').textContent = '压缩中…';
+    try {
+      const res = await fetch('/dsh-pet-7340/context?pet=' + encodeURIComponent(statePetId), {
+        method: 'POST',
+        headers: { 'X-DSH-Pet-Token': token, 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const body = await res.json();
+      if (!body.ok) throw new Error(body.message || body.error || '压缩失败');
+      $('c-context-state').textContent = body.compressed ? '已压缩' : '暂无可压缩内容';
+      await loadContextStats();
+    } catch (error) {
+      $('c-context-state').textContent = '压缩失败：' + error.message;
+    }
+  }
+
   async function load() {
     setStatus('正在读取…');
     const info = await api('/companion/info');
@@ -656,8 +701,15 @@ export const companionScript = `
     $('v-sttLanguage').value = data.voice.sttLanguage;
     $('v-wakeWord').value = data.voice.wakeWord || '小鱼';
     $('v-wakeIdle').value = String(data.voice.wakeIdleSeconds ?? 10);
+    $('v-lowLatency').checked = data.voice.lowLatency !== false;
     $('c-memoryDir').value = data.chat.memoryDir;
     $('c-rounds').value = String(data.chat.rounds);
+    $('c-budget').value = String(data.chat.contextBudgetTokens ?? 6000);
+    $('c-compressAt').value = String(Math.round((data.chat.contextCompressAt ?? 0.75) * 100));
+    $('c-keep').value = String(data.chat.contextKeepRecentTurns ?? 6);
+    $('c-remind').value = String(data.chat.contextRemindEvery ?? 5);
+    $('c-archive').value = String(data.chat.archiveMaxMessages ?? 2000);
+    $('c-retrieval').value = String(data.chat.retrievalTopK ?? 3);
     statePetId = String((info.pets && info.pets[0] && info.pets[0].id) || 'main');
     infoPets = Array.isArray(info.pets) ? info.pets.map((pet) => ({ ...pet })) : [];
     renderDisplay();
@@ -676,6 +728,7 @@ export const companionScript = `
     await loadEmotion();
     await loadUsage();
     await loadReminders();
+    await loadContextStats();
     $('l-mode').value = data.livekit.mode;
     $('l-port').value = String(data.livekit.port);
     $('l-room').value = data.livekit.room;
@@ -725,9 +778,21 @@ export const companionScript = `
         wakeIdleSeconds: Number($('v-wakeIdle').value) || 10,
         activePetId: activeId,
         activePetName: activeName,
+        lowLatency: $('v-lowLatency').checked,
       },
       pets,
-      chat: { memoryDir: $('c-memoryDir').value.trim(), rounds: Number($('c-rounds').value) },
+      chat: {
+        memoryDir: $('c-memoryDir').value.trim(),
+        rounds: Number($('c-rounds').value),
+        contextBudgetTokens: Number($('c-budget').value) || 6000,
+        contextCompressAt: (Number($('c-compressAt').value) || 75) / 100,
+        contextKeepRecentTurns: Number($('c-keep').value) || 6,
+        contextRemindEvery: Number($('c-remind').value) || 0,
+        archiveMaxMessages: Number($('c-archive').value) || 2000,
+        retrievalEnabled: (Number($('c-retrieval').value) || 0) > 0,
+        retrievalTopK: Number($('c-retrieval').value) || 0,
+        retrievalMaxChars: 1200,
+      },
       emotion: { enabled: $('e-enabled').checked, proactive: false },
       usage: { dailyLimit: Number($('u-limit').value) || 0, warnPercent: Number($('u-warn').value) || 80, pricePer1k: Number($('u-price').value) || 0 },
       proactive: {
@@ -815,6 +880,7 @@ export const companionScript = `
   });
   $('v-preview').addEventListener('click', () => void previewVoice());
   $('pet-active').addEventListener('change', () => loadPetOverride());
+  $('c-compress-now').addEventListener('click', () => void compressContextNow());
   $('r-add').addEventListener('click', () => void addReminder());
   $('memoir-export').addEventListener('click', () => void exportMemoir());
   $('e-reset').addEventListener('click', async () => {

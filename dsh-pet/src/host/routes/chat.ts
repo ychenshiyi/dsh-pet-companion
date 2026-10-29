@@ -19,6 +19,8 @@ type ImageAdmission =
 export async function handleChatRoutes(deps: PetRouteDeps, input: RouteInput): Promise<RouteResult | undefined> {
   const { configPaths, log, memoryPath, memoryRounds, readMemory, requirePet } = deps;
   const { getEmotion, resetEmotion } = deps;
+  const { getContext, compressContext } = deps;
+  const { appendMessage, readContextForVoice } = deps;
   const { usage, reminders } = deps;
   const { body, method, rest, url } = input;
 
@@ -99,6 +101,51 @@ export async function handleChatRoutes(deps: PetRouteDeps, input: RouteInput): P
     } catch (e) {
       return failResult('generate-error', e instanceof Error ? e.message : String(e));
     }
+  }
+
+  // 语音/外部渠道：宿主是 memory 唯一写者。
+  if (rest === 'memory/append') {
+    if (method !== 'POST') return methodNotAllowed();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(body ?? 'null');
+    } catch {
+      return invalidJson();
+    }
+    const o = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+    const role = o.role === 'assistant' ? 'assistant' : o.role === 'user' ? 'user' : undefined;
+    const content = typeof o.text === 'string' ? o.text : '';
+    const cfg = readAllConfig(configPaths);
+    const who = requirePet(url.searchParams, () => cfg, { surface: false });
+    if (!who.ok) return who.res;
+    if (!role) return failResult('bad-request', 'role 必须是 user 或 assistant');
+    const result = await appendMessage(who.petId, role, content);
+    return result.ok ? okResult({ ok: true }) : failResult(result.reason, result.message);
+  }
+
+  if (rest === 'memory/context') {
+    if (method !== 'GET') return methodNotAllowed();
+    const cfg = readAllConfig(configPaths);
+    const who = requirePet(url.searchParams, () => cfg, { surface: false });
+    if (!who.ok) return who.res;
+    const context = await readContextForVoice(who.petId);
+    return context.ok ? okResult(context) : failResult(context.reason, context.message);
+  }
+
+  // 上下文：GET 统计；POST 立即压缩。与 /chat 共用同一份 memory.json。
+  if (rest === 'context') {
+    const cfg = readAllConfig(configPaths);
+    const who = requirePet(url.searchParams, () => cfg, { surface: false });
+    if (!who.ok) return who.res;
+    if (method === 'GET') {
+      const context = await getContext(who.petId);
+      return context.ok ? okResult(context) : failResult(context.reason, context.message);
+    }
+    if (method === 'POST') {
+      const result = await compressContext(who.petId);
+      return result.ok ? okResult(result) : failResult(result.reason, result.message ?? '上下文压缩失败');
+    }
+    return methodNotAllowed();
   }
 
   // 用量账本：GET /usage 返回今日/总量/按端统计。前端面板只读。
